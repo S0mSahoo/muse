@@ -9,9 +9,10 @@ import com.example.domain.model.DailyMix
 import com.example.domain.model.Playlist
 import com.example.domain.model.Track
 import com.example.domain.model.User
+import com.example.domain.repository.AuthRepository
 import com.example.domain.repository.MusicRepository
 import com.example.domain.repository.PlaybackRepository
-import com.example.domain.repository.UserRepository
+import com.example.domain.repository.ProfileRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -41,7 +42,8 @@ data class HomeUiState(
 class HomeViewModel(
     private val musicRepository: MusicRepository = AppContainer.musicRepository,
     private val playbackRepository: PlaybackRepository = AppContainer.playbackRepository,
-    private val userRepository: UserRepository = AppContainer.userRepository
+    private val authRepository: AuthRepository = AppContainer.authRepository,
+    private val profileRepository: ProfileRepository = AppContainer.profileRepository
 ) : ViewModel() {
 
     private val _selectedFilter = MutableStateFlow("all")
@@ -49,8 +51,28 @@ class HomeViewModel(
 
     private val greeting = calculateGreeting()
 
+    private val _user = MutableStateFlow(User())
+    val user: StateFlow<User> = _user.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            val userId = authRepository.getCurrentSession()
+            if (userId != null) {
+                val profile = profileRepository.getProfile(userId)
+                if (profile != null) {
+                    _user.value = User(
+                        id = profile.id,
+                        name = profile.displayName ?: "",
+                        handle = profile.username ?: "",
+                        avatarUrl = profile.avatarUrl ?: ""
+                    )
+                }
+            }
+        }
+    }
+
     val uiState: StateFlow<HomeUiState> = combine(
-        userRepository.getCurrentUser(),
+        _user,
         musicRepository.getFeaturedPlaylist(),
         musicRepository.getDailyMixes(),
         musicRepository.getMadeForYouPlaylists(),
@@ -79,7 +101,7 @@ class HomeViewModel(
         val becausePair = params[8] as Pair<Artist, List<Track>>
         val filter = params[9] as String
 
-        val personalizedGreeting = "$greeting, ${user.name}"
+        val personalizedGreeting = if (user.name.isNotEmpty()) "$greeting, ${user.name}" else greeting
         val personalizedSubtitle = when (greeting) {
             "Good morning" -> "Energize your morning focus."
             "Good afternoon" -> "Your afternoon soundscape is ready."

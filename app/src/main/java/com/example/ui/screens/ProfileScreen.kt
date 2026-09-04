@@ -45,6 +45,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
+import com.example.domain.model.UserProfile
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -83,13 +85,37 @@ fun ProfileScreen(
     modifier: Modifier = Modifier
 ) {
     val scope = rememberCoroutineScope()
-    val userRepository = AppContainer.userRepository
     val authRepository = AppContainer.authRepository
-    val entitlementRepository = AppContainer.entitlementRepository
+    val profileRepository = AppContainer.profileRepository
     val musicRepository = AppContainer.musicRepository
+    
+    val userIdState = remember { mutableStateOf<String?>(null) }
+    
+    LaunchedEffect(Unit) {
+        userIdState.value = authRepository.getCurrentSession()
+    }
+    val userId = userIdState.value ?: ""
+    var userProfile by remember { mutableStateOf<UserProfile?>(null) }
+    var isLoading by remember { mutableStateOf(true) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    val user by userRepository.getCurrentUser().collectAsStateWithLifecycle(initialValue = User(name = "", handle = ""))
-    val entitlements by entitlementRepository.getEntitlements().collectAsStateWithLifecycle(initialValue = null)
+    LaunchedEffect(userId) {
+        if (userId.isNotEmpty()) {
+            try {
+                var profile = profileRepository.getProfile(userId)
+                if (profile == null) {
+                    profile = UserProfile(id = userId, username = "NewUser", displayName = "User")
+                    profileRepository.createProfile(profile)
+                }
+                userProfile = profile
+            } catch (e: Exception) {
+                errorMessage = e.message
+            } finally {
+                isLoading = false
+            }
+        }
+    }
+    
     val likedTracks by musicRepository.getLikedTracks().collectAsStateWithLifecycle(initialValue = emptyList())
     val userPlaylists by AppContainer.localDataStore.userPlaylists.collectAsStateWithLifecycle(initialValue = emptyList())
 
@@ -160,17 +186,17 @@ fun ProfileScreen(
                     ) {
                         AsyncImage(
                             model = ImageRequest.Builder(LocalContext.current)
-                                .data("https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80")
+                                .data(userProfile?.avatarUrl ?: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80")
                                 .crossfade(300)
                                 .build(),
-                            contentDescription = "Profile picture for Som",
+                            contentDescription = "Profile picture for ${userProfile?.displayName ?: "User"}",
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize()
                         )
                     }
 
                     Text(
-                        text = user.name,
+                        text = userProfile?.displayName ?: "Loading...",
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
                         color = TextPrimary,
@@ -178,7 +204,7 @@ fun ProfileScreen(
                     )
 
                     Text(
-                        text = "${user.handle} • Music Enthusiast",
+                        text = userProfile?.username ?: "",
                         style = MaterialTheme.typography.bodyMedium,
                         color = TextSecondary,
                         modifier = Modifier.padding(top = 2.dp)
@@ -193,7 +219,7 @@ fun ProfileScreen(
                             .border(1.dp, MuseViolet.copy(alpha = 0.3f), RoundedCornerShape(20.dp))
                             .padding(horizontal = 14.dp, vertical = 6.dp)
                     ) {
-                        val tierTitle = if (user.subscriptionTier == UserTier.PREMIUM) "MUSE Premium Tier" else "MUSE Standard Tier"
+                        val tierTitle = "MUSE Standard Tier"
                         Text(
                             text = tierTitle,
                             style = MaterialTheme.typography.labelSmall,
@@ -281,6 +307,12 @@ fun ProfileScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     ProfileOptionItem(
+                        icon = Icons.Default.Person,
+                        title = "Edit Profile",
+                        subtitle = "Update your display name, username, and photo",
+                        onClick = { selectedInfoDialog = "edit_profile" }
+                    )
+                    ProfileOptionItem(
                         icon = Icons.Default.Diamond,
                         title = "MUSE Premium",
                         subtitle = "Explore premium listening features",
@@ -321,6 +353,10 @@ fun ProfileScreen(
         // Info Dialog
         if (selectedInfoDialog != null) {
             val (title, body) = when (selectedInfoDialog) {
+                "edit_profile" -> Pair(
+                    "Edit Profile",
+                    "Update your profile"
+                )
                 "premium" -> Pair(
                     "MUSE Premium",
                     "MUSE Premium is designed to offer expanded capabilities such as custom sound profiles, enhanced playback options, and seamless listening."
@@ -350,14 +386,41 @@ fun ProfileScreen(
                     Text(text = title, style = MaterialTheme.typography.titleLarge, color = TextPrimary)
                 },
                 text = {
-                    Text(text = body, style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                    if (selectedInfoDialog == "edit_profile") {
+                        Column {
+                            var displayName by remember { mutableStateOf(userProfile?.displayName ?: "") }
+                            var username by remember { mutableStateOf(userProfile?.username ?: "") }
+                            var avatarUrl by remember { mutableStateOf(userProfile?.avatarUrl ?: "") }
+
+                            androidx.compose.material3.OutlinedTextField(value = displayName, onValueChange = { displayName = it }, label = { Text("Display Name") })
+                            Spacer(modifier = Modifier.height(8.dp))
+                            androidx.compose.material3.OutlinedTextField(value = username, onValueChange = { username = it }, label = { Text("Username") })
+                            Spacer(modifier = Modifier.height(8.dp))
+                            androidx.compose.material3.OutlinedTextField(value = avatarUrl, onValueChange = { avatarUrl = it }, label = { Text("Avatar URL") })
+                            
+                            Button(onClick = {
+                                scope.launch {
+                                    val updatedProfile = userProfile?.copy(displayName = displayName, username = username, avatarUrl = avatarUrl)
+                                    if (updatedProfile != null) {
+                                        profileRepository.updateProfile(updatedProfile)
+                                        userProfile = updatedProfile
+                                        selectedInfoDialog = null
+                                    }
+                                }
+                            }) { Text("Save") }
+                        }
+                    } else {
+                        Text(text = body, style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                    }
                 },
                 confirmButton = {
-                    Button(
-                        onClick = { selectedInfoDialog = null },
-                        colors = ButtonDefaults.buttonColors(containerColor = MuseViolet)
-                    ) {
-                        Text("Got it", color = Color.White)
+                    if (selectedInfoDialog != "edit_profile") {
+                        Button(
+                            onClick = { selectedInfoDialog = null },
+                            colors = ButtonDefaults.buttonColors(containerColor = MuseViolet)
+                        ) {
+                            Text("Got it", color = Color.White)
+                        }
                     }
                 }
             )

@@ -23,12 +23,15 @@ fun AppNavigation(navController: NavHostController) {
         when (authState) {
             is AuthState.Authenticated -> {
                 navController.navigate("home") {
-                    popUpTo(0) { inclusive = true }
+                    popUpTo("login") { inclusive = true }
+                    popUpTo("signup") { inclusive = true }
                 }
             }
             is AuthState.Unauthenticated -> {
-                navController.navigate("login") {
-                    popUpTo(0) { inclusive = true }
+                if (navController.currentDestination?.route != "login") {
+                    navController.navigate("login") {
+                        popUpTo("home") { inclusive = true }
+                    }
                 }
             }
             else -> {}

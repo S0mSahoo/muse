@@ -39,9 +39,7 @@ fun LoginScreen(onNavigateToSignUp: () -> Unit, onNavigateToHome: () -> Unit) {
                     isLoading = true
                     val result = authRepository.signIn(email, password)
                     isLoading = false
-                    if (result.isSuccess) {
-                        onNavigateToHome()
-                    } else {
+                    if (result.isFailure) {
                         errorMessage = result.exceptionOrNull()?.message
                     }
                 }

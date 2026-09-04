@@ -19,43 +19,32 @@ fun AppNavigation(navController: NavHostController) {
     val authRepository = AppContainer.authRepository
     val authState by authRepository.authState.collectAsState(initial = AuthState.Loading)
 
-    val startDestination = when (authState) {
-        is AuthState.Authenticated -> "home"
-        else -> "login"
-    }
-
     LaunchedEffect(authState) {
         when (authState) {
             is AuthState.Authenticated -> {
-                // If we're on login or signup and suddenly authenticated, go home
-                if (navController.currentDestination?.route in listOf("login", "signup")) {
-                    navController.navigate("home") {
-                        popUpTo(0) { inclusive = true }
-                    }
+                navController.navigate("home") {
+                    popUpTo(0) { inclusive = true }
                 }
             }
             is AuthState.Unauthenticated -> {
-                // If we're not on login, go to login
-                if (navController.currentDestination?.route != "login") {
-                    navController.navigate("login") {
-                        popUpTo(0) { inclusive = true }
-                    }
+                navController.navigate("login") {
+                    popUpTo(0) { inclusive = true }
                 }
             }
             else -> {}
         }
     }
 
-    NavHost(navController = navController, startDestination = startDestination) {
+    NavHost(navController = navController, startDestination = "login") {
         composable("login") { 
             LoginScreen(
                 onNavigateToSignUp = { navController.navigate("signup") },
-                onNavigateToHome = { navController.navigate("home") { popUpTo("login") { inclusive = true } } }
+                onNavigateToHome = { } // AuthState will handle navigation
             ) 
         }
         composable("signup") { 
             SignUpScreen(
-                onNavigateToHome = { navController.navigate("home") { popUpTo("signup") { inclusive = true } } }
+                onNavigateToHome = { } // AuthState will handle navigation
             ) 
         }
         composable("home") { HomeScreen() }

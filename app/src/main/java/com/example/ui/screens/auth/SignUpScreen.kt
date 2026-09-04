@@ -52,7 +52,7 @@ fun SignUpScreen(onNavigateToHome: () -> Unit) {
                     val result = authRepository.signUp(email, password)
                     isLoading = false
                     if (result.isSuccess) {
-                        onNavigateToHome()
+                        errorMessage = "Account created. Please check your email to confirm."
                     } else {
                         errorMessage = result.exceptionOrNull()?.message
                     }

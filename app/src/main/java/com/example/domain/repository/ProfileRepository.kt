@@ -8,10 +8,17 @@ interface ProfileRepository {
     suspend fun createProfile(profile: UserProfile)
     suspend fun updateProfile(profile: UserProfile)
 
-    suspend fun ensureProfileExists(userId: String) {
+    suspend fun ensureProfileExists(userId: String, defaultName: String = "User", defaultUsername: String = "user_${userId.take(8)}") {
         val existing = getProfile(userId)
         if (existing == null) {
-            createProfile(UserProfile(id = userId, username = "NewUser", displayName = "User", avatarUrl = null))
+            createProfile(
+                UserProfile(
+                    id = userId,
+                    username = defaultUsername,
+                    displayName = defaultName,
+                    avatarUrl = null
+                )
+            )
         }
     }
 }

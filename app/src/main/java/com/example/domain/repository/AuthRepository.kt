@@ -5,9 +5,8 @@ import kotlinx.coroutines.flow.Flow
 
 interface AuthRepository {
     val authState: Flow<AuthState>
-    suspend fun signUp(email: String, password: String): Result<Unit>
-    suspend fun signIn(email: String, password: String): Result<Unit>
     suspend fun signInWithGoogle(idToken: String): Result<Unit>
+    suspend fun signInWithGoogle(): Result<Unit>
     suspend fun signOut(): Result<Unit>
     suspend fun getCurrentSession(): String?
 }

@@ -64,6 +64,8 @@ import kotlinx.coroutines.launch
 import coil.request.ImageRequest
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.di.AppContainer
+import com.example.data.remote.SupabaseClient
+import io.github.jan.supabase.auth.auth
 import com.example.domain.model.User
 import com.example.domain.model.UserTier
 import com.example.ui.theme.BackgroundDark
@@ -89,6 +91,7 @@ fun ProfileScreen(
     val profileRepository = AppContainer.profileRepository
     val musicRepository = AppContainer.musicRepository
     
+    val authUserEmail = com.example.data.remote.SupabaseClient.client.auth.currentSessionOrNull()?.user?.email
     val userIdState = remember { mutableStateOf<String?>(null) }
     
     LaunchedEffect(Unit) {
@@ -109,6 +112,8 @@ fun ProfileScreen(
             } finally {
                 isLoading = false
             }
+        } else {
+            isLoading = false
         }
     }
     
@@ -192,7 +197,9 @@ fun ProfileScreen(
                     }
 
                     Text(
-                        text = userProfile?.displayName ?: "Loading...",
+                        text = userProfile?.displayName?.takeIf { !it.isBlank() } 
+                            ?: authUserEmail?.substringBefore("@")?.replaceFirstChar { it.uppercase() } 
+                            ?: (if (isLoading) "Loading..." else "MUSE User"),
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
                         color = TextPrimary,
@@ -200,11 +207,24 @@ fun ProfileScreen(
                     )
 
                     Text(
-                        text = userProfile?.username ?: "",
+                        text = userProfile?.username?.takeIf { !it.isBlank() } 
+                            ?: authUserEmail 
+                            ?: "",
                         style = MaterialTheme.typography.bodyMedium,
                         color = TextSecondary,
                         modifier = Modifier.padding(top = 2.dp)
                     )
+
+                    val dobText = userProfile?.dob
+                    val genderText = userProfile?.gender
+                    if (!dobText.isNullOrBlank() || !genderText.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = listOfNotNull(dobText, genderText).joinToString(" • "),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary
+                        )
+                    }
 
                     // Tier Status Pill
                     Box(

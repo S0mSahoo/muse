@@ -56,17 +56,22 @@ class HomeViewModel(
 
     init {
         viewModelScope.launch {
-            val userId = authRepository.getCurrentSession()
-            if (userId != null) {
-                val profile = profileRepository.getProfile(userId)
-                if (profile != null) {
-                    _user.value = User(
-                        id = profile.id,
-                        name = profile.displayName ?: "",
-                        handle = profile.username ?: "",
-                        avatarUrl = profile.avatarUrl ?: ""
-                    )
+            try {
+                val userId = authRepository.getCurrentSession()
+                if (userId != null) {
+                    profileRepository.ensureProfileExists(userId)
+                    val profile = profileRepository.getProfile(userId)
+                    if (profile != null) {
+                        _user.value = User(
+                            id = profile.id,
+                            name = profile.displayName ?: "",
+                            handle = profile.username ?: "",
+                            avatarUrl = profile.avatarUrl ?: ""
+                        )
+                    }
                 }
+            } catch (e: Exception) {
+                // Fallback gracefully without crashing
             }
         }
     }

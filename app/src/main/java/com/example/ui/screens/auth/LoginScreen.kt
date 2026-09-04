@@ -1,117 +1,166 @@
 package com.example.ui.screens.auth
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.credentials.CredentialManager
 import androidx.credentials.GetCredentialRequest
-import androidx.credentials.GetCredentialResponse
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.example.di.AppContainer
+import com.example.ui.theme.*
 import kotlinx.coroutines.launch
 
 @Composable
-fun LoginScreen(onNavigateToSignUp: () -> Unit, onNavigateToHome: () -> Unit) {
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
+fun LoginScreen() {
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val authRepository = AppContainer.authRepository
     val context = LocalContext.current
+    val scrollState = rememberScrollState()
 
-    Column(
-        modifier = Modifier.fillMaxSize().padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(BackgroundDark),
+        contentAlignment = Alignment.Center
     ) {
-        // Google Sign-In Button
-        Button(
-            onClick = {
-                scope.launch {
-                    isLoading = true
-                    errorMessage = null
-                    try {
-                        val credentialManager = CredentialManager.create(context)
-                        val googleIdOption = GetGoogleIdOption.Builder()
-                            .setFilterByAuthorizedAccounts(false)
-                            .setServerClientId("YOUR_GOOGLE_WEB_CLIENT_ID.apps.googleusercontent.com")
-                            .setAutoSelectEnabled(false)
-                            .build()
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(scrollState)
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            // App Branding Hero Header
+            Box(
+                modifier = Modifier
+                    .size(72.dp)
+                    .clip(CircleShape)
+                    .background(
+                        Brush.linearGradient(
+                            colors = listOf(MuseViolet, MuseVioletLight)
+                        )
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.MusicNote,
+                    contentDescription = "MUSE Logo",
+                    tint = TextPrimary,
+                    modifier = Modifier.size(36.dp)
+                )
+            }
 
-                        val request = GetCredentialRequest.Builder()
-                            .addCredentialOption(googleIdOption)
-                            .build()
+            Spacer(modifier = Modifier.height(16.dp))
 
-                        val result = credentialManager.getCredential(context, request)
-                        val credential = result.credential
-                        if (credential is androidx.credentials.CustomCredential &&
-                            credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
-                        ) {
-                            val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(credential.data)
-                            val idToken = googleIdTokenCredential.idToken
-                            val signInResult = authRepository.signInWithGoogle(idToken)
-                            if (signInResult.isFailure) {
-                                errorMessage = signInResult.exceptionOrNull()?.message ?: "Google sign-in failed"
+            Text(
+                text = "Welcome to MUSE",
+                style = MaterialTheme.typography.headlineLarge,
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary
+            )
+
+            Text(
+                text = "Sign in with Google to continue your musical journey",
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextSecondary,
+                modifier = Modifier.padding(top = 4.dp, bottom = 24.dp)
+            )
+
+            // Form Card Container
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(SurfaceCard)
+                    .border(1.dp, BorderSubtle, RoundedCornerShape(24.dp))
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Google Sign-In Button
+                Button(
+                    onClick = {
+                        scope.launch {
+                            isLoading = true
+                            errorMessage = null
+                            try {
+                                val credentialManager = CredentialManager.create(context)
+                                val googleIdOption = GetGoogleIdOption.Builder()
+                                    .setFilterByAuthorizedAccounts(false)
+                                    .setServerClientId("YOUR_GOOGLE_WEB_CLIENT_ID.apps.googleusercontent.com")
+                                    .setAutoSelectEnabled(false)
+                                    .build()
+
+                                val request = GetCredentialRequest.Builder()
+                                    .addCredentialOption(googleIdOption)
+                                    .build()
+
+                                val result = credentialManager.getCredential(context, request)
+                                val credential = result.credential
+                                if (credential is androidx.credentials.CustomCredential &&
+                                    credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
+                                ) {
+                                    val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(credential.data)
+                                    val idToken = googleIdTokenCredential.idToken
+                                    val signInResult = authRepository.signInWithGoogle(idToken)
+                                    if (signInResult.isFailure) {
+                                        errorMessage = signInResult.exceptionOrNull()?.message ?: "Google sign-in failed"
+                                    }
+                                } else {
+                                    errorMessage = "Unexpected credential type"
+                                }
+                            } catch (e: Exception) {
+                                try {
+                                    val signInResult = authRepository.signInWithGoogle()
+                                    if (signInResult.isFailure) {
+                                        errorMessage = signInResult.exceptionOrNull()?.message ?: "Google sign-in failed"
+                                    }
+                                } catch (fallbackEx: Exception) {
+                                    errorMessage = fallbackEx.localizedMessage ?: "Google sign-in failed"
+                                }
+                            } finally {
+                                isLoading = false
                             }
-                        } else {
-                            errorMessage = "Unexpected credential type"
                         }
-                    } catch (e: Exception) {
-                        errorMessage = e.localizedMessage ?: "Google sign-in cancelled or failed"
-                    } finally {
-                        isLoading = false
-                    }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(54.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = SurfaceElevated),
+                    enabled = !isLoading
+                ) {
+                    Text(
+                        text = if (isLoading) "Signing in..." else "Continue with Google",
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = TextPrimary
+                    )
                 }
-            },
-            modifier = Modifier.fillMaxWidth().height(50.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-            enabled = !isLoading
-        ) {
-            Text("Continue with Google", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
 
-        Spacer(modifier = Modifier.height(24.dp))
-        Text("Or sign in with email", style = MaterialTheme.typography.bodySmall)
-        Spacer(modifier = Modifier.height(16.dp))
-
-        TextField(value = email, onValueChange = { email = it }, label = { Text("Email") }, modifier = Modifier.fillMaxWidth())
-        Spacer(modifier = Modifier.height(8.dp))
-        TextField(
-            value = password,
-            onValueChange = { password = it },
-            label = { Text("Password") },
-            visualTransformation = PasswordVisualTransformation(),
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        Button(
-            onClick = {
-                scope.launch {
-                    isLoading = true
-                    errorMessage = null
-                    val result = authRepository.signIn(email, password)
-                    isLoading = false
-                    if (result.isFailure) {
-                        errorMessage = result.exceptionOrNull()?.message
-                    }
+                errorMessage?.let {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 }
-            },
-            modifier = Modifier.fillMaxWidth().height(50.dp),
-            enabled = !isLoading
-        ) {
-            Text(if (isLoading) "Signing in..." else "Sign In")
+            }
         }
-        errorMessage?.let {
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(it, color = MaterialTheme.colorScheme.error)
-        }
-        TextButton(onClick = onNavigateToSignUp) { Text("Create Account") }
     }
 }

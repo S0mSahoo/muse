@@ -102,12 +102,8 @@ fun ProfileScreen(
     LaunchedEffect(userId) {
         if (userId.isNotEmpty()) {
             try {
-                var profile = profileRepository.getProfile(userId)
-                if (profile == null) {
-                    profile = UserProfile(id = userId, username = "NewUser", displayName = "User")
-                    profileRepository.createProfile(profile)
-                }
-                userProfile = profile
+                profileRepository.ensureProfileExists(userId)
+                userProfile = profileRepository.getProfile(userId)
             } catch (e: Exception) {
                 errorMessage = e.message
             } finally {

@@ -13,6 +13,10 @@ import com.example.domain.repository.AuthRepository
 import com.example.domain.repository.MusicRepository
 import com.example.domain.repository.PlaybackRepository
 import com.example.domain.repository.ProfileRepository
+import com.example.data.remote.SupabaseClient
+import io.github.jan.supabase.auth.auth
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -59,14 +63,28 @@ class HomeViewModel(
             try {
                 val userId = authRepository.getCurrentSession()
                 if (userId != null) {
-                    profileRepository.ensureProfileExists(userId)
+                    val authUser = SupabaseClient.client.auth.currentSessionOrNull()?.user
+                    val rawName = authUser?.userMetadata?.get("full_name") ?: authUser?.userMetadata?.get("name")
+                    val rawAvatar = authUser?.userMetadata?.get("avatar_url") ?: authUser?.userMetadata?.get("picture")
+                    val rawUsername = authUser?.userMetadata?.get("preferred_username")
+
+                    val name = (rawName as? JsonPrimitive)?.contentOrNull ?: authUser?.email?.substringBefore("@") ?: "User"
+                    val avatar = (rawAvatar as? JsonPrimitive)?.contentOrNull
+                    val username = (rawUsername as? JsonPrimitive)?.contentOrNull ?: authUser?.email?.substringBefore("@") ?: "user_${userId.take(8)}"
+
+                    profileRepository.ensureProfileExists(
+                        userId = userId,
+                        defaultName = name,
+                        defaultUsername = username,
+                        defaultAvatarUrl = avatar
+                    )
                     val profile = profileRepository.getProfile(userId)
                     if (profile != null) {
                         _user.value = User(
                             id = profile.id,
-                            name = profile.displayName ?: "",
-                            handle = profile.username ?: "",
-                            avatarUrl = profile.avatarUrl ?: ""
+                            name = profile.displayName ?: name,
+                            handle = profile.username ?: username,
+                            avatarUrl = profile.avatarUrl ?: avatar ?: ""
                         )
                     }
                 }

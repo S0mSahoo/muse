@@ -11,6 +11,8 @@ import io.github.jan.supabase.auth.status.SessionStatus
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 
 class SupabaseAuthRepositoryImpl(
     private val profileRepository: ProfileRepository = SupabaseProfileRepositoryImpl()
@@ -19,16 +21,20 @@ class SupabaseAuthRepositoryImpl(
 
     override val authState: Flow<AuthState> = auth.sessionStatus
         .map { status ->
-            if (status is SessionStatus.Authenticated) {
-                AuthState.Authenticated
-            } else if (status is SessionStatus.NotAuthenticated) {
-                AuthState.Unauthenticated
-            } else {
-                if (auth.currentSessionOrNull() != null) AuthState.Authenticated else AuthState.Unauthenticated
+            when (status) {
+                is SessionStatus.Authenticated -> AuthState.Authenticated
+                is SessionStatus.NotAuthenticated -> AuthState.Unauthenticated
+                is SessionStatus.Initializing -> {
+                    if (auth.currentSessionOrNull() != null) AuthState.Authenticated else AuthState.Loading
+                }
+                else -> {
+                    if (auth.currentSessionOrNull() != null) AuthState.Authenticated else AuthState.Unauthenticated
+                }
             }
         }
         .onStart {
-            emit(if (auth.currentSessionOrNull() != null) AuthState.Authenticated else AuthState.Loading)
+            val current = auth.currentSessionOrNull()
+            emit(if (current != null) AuthState.Authenticated else AuthState.Loading)
         }
 
     override suspend fun signInWithGoogle(idToken: String): Result<Unit> = runCatching {
@@ -36,18 +42,27 @@ class SupabaseAuthRepositoryImpl(
             provider = Google
             this.idToken = idToken
         }
-        val userId = auth.currentSessionOrNull()?.user?.id
-        if (userId != null) {
+        val user = auth.currentSessionOrNull()?.user
+        if (user != null) {
             try {
-                profileRepository.ensureProfileExists(userId)
+                val rawName = user.userMetadata?.get("full_name") ?: user.userMetadata?.get("name")
+                val rawAvatar = user.userMetadata?.get("avatar_url") ?: user.userMetadata?.get("picture")
+                val rawUsername = user.userMetadata?.get("preferred_username")
+
+                val name = (rawName as? JsonPrimitive)?.contentOrNull ?: user.email?.substringBefore("@") ?: "User"
+                val avatar = (rawAvatar as? JsonPrimitive)?.contentOrNull
+                val username = (rawUsername as? JsonPrimitive)?.contentOrNull ?: user.email?.substringBefore("@") ?: "user_${user.id.take(8)}"
+
+                profileRepository.ensureProfileExists(
+                    userId = user.id,
+                    defaultName = name,
+                    defaultUsername = username,
+                    defaultAvatarUrl = avatar
+                )
             } catch (e: Exception) {
-                // Ignore profile creation errors if table is not configured
+                println("AuthRepo: ensureProfileExists failed: ${e.message}")
             }
         }
-    }
-
-    override suspend fun signInWithGoogle(): Result<Unit> = runCatching {
-        auth.signInWith(Google)
     }
 
     override suspend fun signOut(): Result<Unit> = runCatching {

@@ -20,6 +20,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.credentials.CredentialManager
 import androidx.credentials.GetCredentialRequest
+import com.example.BuildConfig
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.example.di.AppContainer
@@ -105,7 +106,7 @@ fun LoginScreen() {
                                 val credentialManager = CredentialManager.create(context)
                                 val googleIdOption = GetGoogleIdOption.Builder()
                                     .setFilterByAuthorizedAccounts(false)
-                                    .setServerClientId("YOUR_GOOGLE_WEB_CLIENT_ID.apps.googleusercontent.com")
+                                    .setServerClientId(BuildConfig.GOOGLE_WEB_CLIENT_ID)
                                     .setAutoSelectEnabled(false)
                                     .build()
 
@@ -127,14 +128,14 @@ fun LoginScreen() {
                                 } else {
                                     errorMessage = "Unexpected credential type"
                                 }
+                            } catch (e: androidx.credentials.exceptions.GetCredentialCancellationException) {
+                                // User cancelled or dismissed the Google account selector
+                                errorMessage = null
                             } catch (e: Exception) {
-                                try {
-                                    val signInResult = authRepository.signInWithGoogle()
-                                    if (signInResult.isFailure) {
-                                        errorMessage = signInResult.exceptionOrNull()?.message ?: "Google sign-in failed"
-                                    }
-                                } catch (fallbackEx: Exception) {
-                                    errorMessage = fallbackEx.localizedMessage ?: "Google sign-in failed"
+                                if (e.message?.contains("cancelled", ignoreCase = true) == true) {
+                                    errorMessage = null
+                                } else {
+                                    errorMessage = "Authentication failed: ${e.message}"
                                 }
                             } finally {
                                 isLoading = false

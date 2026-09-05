@@ -13,7 +13,6 @@ import com.example.data.repository.MockEntitlementRepositoryImpl
 import com.example.data.repository.MockMusicRepositoryImpl
 import com.example.data.repository.MockPlaybackRepositoryImpl
 import com.example.data.repository.MockRecommendationRepositoryImpl
-import com.example.data.repository.MockUserRepositoryImpl
 import com.example.data.repository.SupabaseProfileRepositoryImpl
 import com.example.data.repository.SupabaseAuthRepositoryImpl
 import com.example.domain.provider.MusicCatalogProvider
@@ -47,6 +46,7 @@ import com.example.domain.usecase.SkipPreviousUseCase
 import com.example.domain.usecase.ToggleLikeUseCase
 import com.example.domain.usecase.TogglePlayPauseUseCase
 import com.example.domain.usecase.UpdateUserProfileUseCase
+import io.github.jan.supabase.auth.auth
 
 object AppContainer {
     // 1. Local Data Store (Single Source of Truth for Likes, History, and Profile)
@@ -71,12 +71,49 @@ object AppContainer {
     val recommendationRepository: RecommendationRepository by lazy {
         MockRecommendationRepositoryImpl(musicCatalogProvider, recommendationEngine)
     }
-    val userRepository: UserRepository by lazy {
-        MockUserRepositoryImpl(localDataStore)
-    }
     
     val profileRepository: ProfileRepository by lazy {
         SupabaseProfileRepositoryImpl()
+    }
+    
+    // UserRepository implementation using ProfileRepository
+    val userRepository: UserRepository by lazy {
+        object : UserRepository {
+            override fun getCurrentUser(): kotlinx.coroutines.flow.Flow<com.example.domain.model.User> = kotlinx.coroutines.flow.flow {
+                val user = com.example.data.remote.SupabaseClient.client.auth.currentUserOrNull()
+                if (user != null) {
+                    val rawName = user.userMetadata?.get("full_name") ?: user.userMetadata?.get("name")
+                    val rawAvatar = user.userMetadata?.get("avatar_url") ?: user.userMetadata?.get("picture")
+                    val rawUsername = user.userMetadata?.get("preferred_username")
+
+                    val name = (rawName as? kotlinx.serialization.json.JsonPrimitive)?.content ?: user.email?.substringBefore("@") ?: "User"
+                    val avatar = (rawAvatar as? kotlinx.serialization.json.JsonPrimitive)?.content
+                    val username = (rawUsername as? kotlinx.serialization.json.JsonPrimitive)?.content ?: user.email?.substringBefore("@") ?: "user_${user.id.take(8)}"
+
+                    profileRepository.ensureProfileExists(
+                        userId = user.id,
+                        defaultName = name,
+                        defaultUsername = username,
+                        defaultAvatarUrl = avatar
+                    )
+                    val profile = profileRepository.getProfile(user.id)
+
+                    emit(com.example.domain.model.User(
+                        id = user.id,
+                        name = profile?.displayName ?: name,
+                        handle = profile?.username ?: username,
+                        avatarUrl = profile?.avatarUrl ?: avatar ?: ""
+                    ))
+                }
+            }
+            override fun updateProfile(name: String, handle: String): kotlinx.coroutines.flow.Flow<com.example.domain.model.User> = kotlinx.coroutines.flow.flow {
+                val user = com.example.data.remote.SupabaseClient.client.auth.currentUserOrNull()
+                if (user != null) {
+                    profileRepository.updateProfile(com.example.domain.model.UserProfile(id = user.id, username = handle, displayName = name))
+                    emit(com.example.domain.model.User(id = user.id, name = name, handle = handle))
+                }
+            }
+        }
     }
     
     val authRepository: AuthRepository by lazy {
@@ -134,4 +171,3 @@ object AppContainer {
     val getEntitlementsUseCase by lazy { GetEntitlementsUseCase(entitlementRepository) }
     val setSubscriptionTierUseCase by lazy { SetSubscriptionTierUseCase(entitlementRepository) }
 }
-

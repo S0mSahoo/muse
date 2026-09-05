@@ -65,9 +65,9 @@ enum class UserTier {
 typealias SubscriptionTier = UserTier
 
 data class User(
-    val id: String = "user_som_01",
-    val name: String = "Som",
-    val handle: String = "@som",
+    val id: String = "",
+    val name: String = "",
+    val handle: String = "",
     val avatarUrl: String = "",
     val subscriptionTier: UserTier = UserTier.STANDARD
 )

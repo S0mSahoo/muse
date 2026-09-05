@@ -15,6 +15,7 @@ import com.example.data.repository.MockPlaybackRepositoryImpl
 import com.example.data.repository.MockRecommendationRepositoryImpl
 import com.example.data.repository.SupabaseProfileRepositoryImpl
 import com.example.data.repository.SupabaseAuthRepositoryImpl
+import com.example.data.repository.SupabaseLikedTracksRepositoryImpl
 import com.example.domain.provider.MusicCatalogProvider
 import com.example.domain.provider.PlaybackProvider
 import com.example.domain.recommendation.RecommendationEngine
@@ -24,6 +25,7 @@ import com.example.domain.repository.MusicRepository
 import com.example.domain.repository.PlaybackRepository
 import com.example.domain.repository.ProfileRepository
 import com.example.domain.repository.AuthRepository
+import com.example.domain.repository.LikedTracksRepository
 import com.example.domain.repository.RecommendationRepository
 import com.example.domain.usecase.GetDiscoverContentUseCase
 import com.example.domain.usecase.GetEntitlementsUseCase
@@ -70,18 +72,23 @@ object AppContainer {
     val authRepository: AuthRepository by lazy {
         SupabaseAuthRepositoryImpl()
     }
+
+    val likedTracksRepository: LikedTracksRepository by lazy {
+        SupabaseLikedTracksRepositoryImpl(authRepository)
+    }
     
     val entitlementRepository: EntitlementRepository by lazy {
         MockEntitlementRepositoryImpl(localDataStore)
     }
     val musicRepository: MusicRepository by lazy {
-        MockMusicRepositoryImpl(musicCatalogProvider, localDataStore)
+        MockMusicRepositoryImpl(musicCatalogProvider, likedTracksRepository)
     }
 
     val playbackManager: PlaybackManager by lazy {
         PlaybackManager(
             playbackProvider = playbackProvider,
             localDataStore = localDataStore,
+            likedTracksRepository = likedTracksRepository,
             listeningHistoryRepository = listeningHistoryRepository
         )
     }

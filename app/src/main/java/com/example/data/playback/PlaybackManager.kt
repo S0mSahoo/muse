@@ -7,6 +7,7 @@ import com.example.domain.model.PlaybackState
 import com.example.domain.model.Playlist
 import com.example.domain.model.Track
 import com.example.domain.provider.PlaybackProvider
+import com.example.domain.repository.LikedTracksRepository
 import com.example.domain.repository.ListeningHistoryRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -27,6 +28,7 @@ import kotlinx.coroutines.launch
 class PlaybackManager(
     private val playbackProvider: PlaybackProvider,
     private val localDataStore: LocalDataStore,
+    private val likedTracksRepository: LikedTracksRepository,
     private val listeningHistoryRepository: ListeningHistoryRepository,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 ) {
@@ -51,7 +53,7 @@ class PlaybackManager(
     init {
         // Observe local liked track IDs to keep playback state perfectly synced everywhere
         scope.launch {
-            localDataStore.likedTrackIds.collect { likedIds ->
+            likedTracksRepository.getLikedTrackIds().collect { likedIds ->
                 _playbackState.update { state ->
                     val updatedQueue = state.queue.map { track ->
                         track.copy(isLiked = likedIds.contains(track.id))
@@ -71,7 +73,7 @@ class PlaybackManager(
     }
 
     fun playTrack(track: Track, queue: List<Track> = listOf(track)) {
-        val likedIds = localDataStore.likedTrackIds.value
+        val likedIds = likedTracksRepository.getLikedTrackIds().value
         val syncTrack = track.copy(isLiked = likedIds.contains(track.id))
         val fullQueue = if (queue.contains(track)) queue else listOf(track) + queue
         val syncQueue = fullQueue.map { it.copy(isLiked = likedIds.contains(it.id)) }
@@ -99,7 +101,7 @@ class PlaybackManager(
 
     fun playPlaylist(playlist: Playlist, startIndex: Int = 0) {
         if (playlist.tracks.isEmpty()) return
-        val likedIds = localDataStore.likedTrackIds.value
+        val likedIds = likedTracksRepository.getLikedTrackIds().value
         val syncTracks = playlist.tracks.map { it.copy(isLiked = likedIds.contains(it.id)) }
         val validIndex = startIndex.coerceIn(0, syncTracks.size - 1)
         val selectedTrack = syncTracks[validIndex]
@@ -241,12 +243,18 @@ class PlaybackManager(
     }
 
     fun toggleLike(trackId: String) {
-        val isLiked = localDataStore.toggleTrackLike(trackId)
-        recordEvent(
-            trackId = trackId,
-            pos = _playbackState.value.progressMs,
-            type = if (isLiked) ListeningEventType.LIKED else ListeningEventType.UNLIKED
-        )
+        scope.launch {
+            try {
+                val isLiked = likedTracksRepository.toggleLike(trackId)
+                recordEvent(
+                    trackId = trackId,
+                    pos = _playbackState.value.progressMs,
+                    type = if (isLiked) ListeningEventType.LIKED else ListeningEventType.UNLIKED
+                )
+            } catch (e: Exception) {
+                println("PlaybackManager: Error toggling like: ${e.message}")
+            }
+        }
     }
 
     private fun startProgressTracker() {

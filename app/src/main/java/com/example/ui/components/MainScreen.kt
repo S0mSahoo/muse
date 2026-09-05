@@ -60,10 +60,7 @@ fun MainScreen(
                     onTogglePlayPause = { playbackRepository.togglePlayPause() },
                     onNext = { playbackRepository.next() },
                     onToggleLike = { trackId ->
-                        scope.launch {
-                            musicRepository.toggleTrackLike(trackId)
-                            playbackRepository.toggleLike(trackId)
-                        }
+                        playbackRepository.toggleLike(trackId)
                     },
                     onClick = { showNowPlaying = true }
                 )
@@ -96,10 +93,7 @@ fun MainScreen(
                 onPrevious = { playbackRepository.previous() },
                 onSeekTo = { pos -> playbackRepository.seekTo(pos) },
                 onToggleLike = { trackId ->
-                    scope.launch {
-                        musicRepository.toggleTrackLike(trackId)
-                        playbackRepository.toggleLike(trackId)
-                    }
+                    playbackRepository.toggleLike(trackId)
                 },
                 onToggleShuffle = { playbackRepository.toggleShuffle() },
                 onToggleRepeat = { playbackRepository.toggleRepeat() }

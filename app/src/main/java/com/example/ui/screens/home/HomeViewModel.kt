@@ -161,10 +161,7 @@ class HomeViewModel(
     }
 
     fun toggleLike(trackId: String) {
-        viewModelScope.launch {
-            musicRepository.toggleTrackLike(trackId)
-            playbackRepository.toggleLike(trackId)
-        }
+        playbackRepository.toggleLike(trackId)
     }
 
     companion object {

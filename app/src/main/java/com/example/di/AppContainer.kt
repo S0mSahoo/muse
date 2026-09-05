@@ -79,18 +79,11 @@ object AppContainer {
     }
 
     val playbackManager: PlaybackManager by lazy {
-        val manager = PlaybackManager(
+        PlaybackManager(
             playbackProvider = playbackProvider,
             localDataStore = localDataStore,
             listeningHistoryRepository = listeningHistoryRepository
         )
-        val defaultTracks = com.example.data.mock.MockMusicCatalog.sampleTracks
-        if (defaultTracks.isNotEmpty()) {
-            manager.playTrack(defaultTracks[0], defaultTracks)
-            manager.pause()
-            manager.seekTo(45000L)
-        }
-        manager
     }
     val playbackRepository: PlaybackRepository by lazy {
         MockPlaybackRepositoryImpl(playbackManager)

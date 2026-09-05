@@ -82,4 +82,5 @@ class SupabaseAuthRepositoryImpl(
     }
 
     override suspend fun getCurrentSession(): String? = auth.currentSessionOrNull()?.user?.id
+    override suspend fun getCurrentUserEmail(): String? = auth.currentSessionOrNull()?.user?.email
 }

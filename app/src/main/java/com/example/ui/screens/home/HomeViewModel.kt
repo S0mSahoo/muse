@@ -13,10 +13,6 @@ import com.example.domain.repository.AuthRepository
 import com.example.domain.repository.MusicRepository
 import com.example.domain.repository.PlaybackRepository
 import com.example.domain.repository.ProfileRepository
-import com.example.data.remote.SupabaseClient
-import io.github.jan.supabase.auth.auth
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.contentOrNull
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow

@@ -47,8 +47,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
 import com.example.domain.model.UserProfile
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.contentOrNull
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -66,8 +64,6 @@ import kotlinx.coroutines.launch
 import coil.request.ImageRequest
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.di.AppContainer
-import com.example.data.remote.SupabaseClient
-import io.github.jan.supabase.auth.auth
 import com.example.domain.model.User
 import com.example.domain.model.UserTier
 import com.example.ui.theme.BackgroundDark
@@ -93,13 +89,15 @@ fun ProfileScreen(
     val profileRepository = AppContainer.profileRepository
     val musicRepository = AppContainer.musicRepository
     
-    val authUserEmail = com.example.data.remote.SupabaseClient.client.auth.currentSessionOrNull()?.user?.email
+    val authUserEmail = remember { mutableStateOf<String?>(null) }
     val userIdState = remember { mutableStateOf<String?>(null) }
     
     LaunchedEffect(Unit) {
         userIdState.value = authRepository.getCurrentSession()
+        authUserEmail.value = authRepository.getCurrentUserEmail()
     }
     val userId = userIdState.value ?: ""
+    val email = authUserEmail.value
     var userProfile by remember { mutableStateOf<UserProfile?>(null) }
     var isLoading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -199,7 +197,7 @@ fun ProfileScreen(
 
                     Text(
                         text = userProfile?.displayName?.takeIf { !it.isBlank() } 
-                            ?: authUserEmail?.substringBefore("@")?.replaceFirstChar { it.uppercase() } 
+                            ?: email?.substringBefore("@")?.replaceFirstChar { it.uppercase() } 
                             ?: (if (isLoading) "Loading..." else "MUSE User"),
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
@@ -209,7 +207,7 @@ fun ProfileScreen(
 
                     Text(
                         text = userProfile?.username?.takeIf { !it.isBlank() } 
-                            ?: authUserEmail 
+                            ?: email 
                             ?: "",
                         style = MaterialTheme.typography.bodyMedium,
                         color = TextSecondary,

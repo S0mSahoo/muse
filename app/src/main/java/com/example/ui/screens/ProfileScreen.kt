@@ -107,21 +107,6 @@ fun ProfileScreen(
     LaunchedEffect(userId) {
         if (userId.isNotEmpty()) {
             try {
-                val authUser = com.example.data.remote.SupabaseClient.client.auth.currentSessionOrNull()?.user
-                val rawName = authUser?.userMetadata?.get("full_name") ?: authUser?.userMetadata?.get("name")
-                val rawAvatar = authUser?.userMetadata?.get("avatar_url") ?: authUser?.userMetadata?.get("picture")
-                val rawUsername = authUser?.userMetadata?.get("preferred_username")
-
-                val name = (rawName as? JsonPrimitive)?.contentOrNull ?: authUser?.email?.substringBefore("@") ?: "User"
-                val avatar = (rawAvatar as? JsonPrimitive)?.contentOrNull
-                val username = (rawUsername as? JsonPrimitive)?.contentOrNull ?: authUser?.email?.substringBefore("@") ?: "user_${userId.take(8)}"
-
-                profileRepository.ensureProfileExists(
-                    userId = userId,
-                    defaultName = name,
-                    defaultUsername = username,
-                    defaultAvatarUrl = avatar
-                )
                 userProfile = profileRepository.getProfile(userId)
             } catch (e: Exception) {
                 errorMessage = e.message

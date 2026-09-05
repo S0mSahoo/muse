@@ -63,28 +63,14 @@ class HomeViewModel(
             try {
                 val userId = authRepository.getCurrentSession()
                 if (userId != null) {
-                    val authUser = SupabaseClient.client.auth.currentSessionOrNull()?.user
-                    val rawName = authUser?.userMetadata?.get("full_name") ?: authUser?.userMetadata?.get("name")
-                    val rawAvatar = authUser?.userMetadata?.get("avatar_url") ?: authUser?.userMetadata?.get("picture")
-                    val rawUsername = authUser?.userMetadata?.get("preferred_username")
-
-                    val name = (rawName as? JsonPrimitive)?.contentOrNull ?: authUser?.email?.substringBefore("@") ?: "User"
-                    val avatar = (rawAvatar as? JsonPrimitive)?.contentOrNull
-                    val username = (rawUsername as? JsonPrimitive)?.contentOrNull ?: authUser?.email?.substringBefore("@") ?: "user_${userId.take(8)}"
-
-                    profileRepository.ensureProfileExists(
-                        userId = userId,
-                        defaultName = name,
-                        defaultUsername = username,
-                        defaultAvatarUrl = avatar
-                    )
+                    // Just read. Do not create.
                     val profile = profileRepository.getProfile(userId)
                     if (profile != null) {
                         _user.value = User(
                             id = profile.id,
-                            name = profile.displayName ?: name,
-                            handle = profile.username ?: username,
-                            avatarUrl = profile.avatarUrl ?: avatar ?: ""
+                            name = profile.displayName ?: "",
+                            handle = profile.username ?: "",
+                            avatarUrl = profile.avatarUrl ?: ""
                         )
                     }
                 }

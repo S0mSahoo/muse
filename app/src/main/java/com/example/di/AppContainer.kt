@@ -25,14 +25,12 @@ import com.example.domain.repository.PlaybackRepository
 import com.example.domain.repository.ProfileRepository
 import com.example.domain.repository.AuthRepository
 import com.example.domain.repository.RecommendationRepository
-import com.example.domain.repository.UserRepository
 import com.example.domain.usecase.GetDiscoverContentUseCase
 import com.example.domain.usecase.GetEntitlementsUseCase
 import com.example.domain.usecase.GetHomeContentUseCase
 import com.example.domain.usecase.GetLikedTracksUseCase
 import com.example.domain.usecase.GetPlaybackStateUseCase
 import com.example.domain.usecase.GetRecommendationsUseCase
-import com.example.domain.usecase.GetUserProfileUseCase
 import com.example.domain.usecase.PausePlaybackUseCase
 import com.example.domain.usecase.PlayPlaylistUseCase
 import com.example.domain.usecase.PlayTrackUseCase
@@ -45,21 +43,15 @@ import com.example.domain.usecase.SkipNextUseCase
 import com.example.domain.usecase.SkipPreviousUseCase
 import com.example.domain.usecase.ToggleLikeUseCase
 import com.example.domain.usecase.TogglePlayPauseUseCase
-import com.example.domain.usecase.UpdateUserProfileUseCase
 import io.github.jan.supabase.auth.auth
 
 object AppContainer {
-    // 1. Local Data Store (Single Source of Truth for Likes, History, and Profile)
     val localDataStore: LocalDataStore by lazy { LocalDataStore() }
-    
-    // Remote
     val supabaseClient = SupabaseClient.client
 
-    // 2. Providers (Provider-independent abstractions)
     val musicCatalogProvider: MusicCatalogProvider by lazy { MockMusicCatalogProvider() }
     val playbackProvider: PlaybackProvider by lazy { MockPlaybackProvider() }
 
-    // 3. Analytics & Recommendation Engine
     val listeningHistoryRepository: ListeningHistoryRepository by lazy { ListeningHistoryRepositoryImpl() }
     val candidateGenerator by lazy { DefaultCandidateGenerator(musicCatalogProvider) }
     val trackRanker by lazy { DefaultTrackRanker() }
@@ -67,53 +59,12 @@ object AppContainer {
         DefaultRecommendationEngine(candidateGenerator, trackRanker)
     }
 
-    // 4. Repositories
     val recommendationRepository: RecommendationRepository by lazy {
         MockRecommendationRepositoryImpl(musicCatalogProvider, recommendationEngine)
     }
     
     val profileRepository: ProfileRepository by lazy {
         SupabaseProfileRepositoryImpl()
-    }
-    
-    // UserRepository implementation using ProfileRepository
-    val userRepository: UserRepository by lazy {
-        object : UserRepository {
-            override fun getCurrentUser(): kotlinx.coroutines.flow.Flow<com.example.domain.model.User> = kotlinx.coroutines.flow.flow {
-                val user = com.example.data.remote.SupabaseClient.client.auth.currentUserOrNull()
-                if (user != null) {
-                    val rawName = user.userMetadata?.get("full_name") ?: user.userMetadata?.get("name")
-                    val rawAvatar = user.userMetadata?.get("avatar_url") ?: user.userMetadata?.get("picture")
-                    val rawUsername = user.userMetadata?.get("preferred_username")
-
-                    val name = (rawName as? kotlinx.serialization.json.JsonPrimitive)?.content ?: user.email?.substringBefore("@") ?: "User"
-                    val avatar = (rawAvatar as? kotlinx.serialization.json.JsonPrimitive)?.content
-                    val username = (rawUsername as? kotlinx.serialization.json.JsonPrimitive)?.content ?: user.email?.substringBefore("@") ?: "user_${user.id.take(8)}"
-
-                    profileRepository.ensureProfileExists(
-                        userId = user.id,
-                        defaultName = name,
-                        defaultUsername = username,
-                        defaultAvatarUrl = avatar
-                    )
-                    val profile = profileRepository.getProfile(user.id)
-
-                    emit(com.example.domain.model.User(
-                        id = user.id,
-                        name = profile?.displayName ?: name,
-                        handle = profile?.username ?: username,
-                        avatarUrl = profile?.avatarUrl ?: avatar ?: ""
-                    ))
-                }
-            }
-            override fun updateProfile(name: String, handle: String): kotlinx.coroutines.flow.Flow<com.example.domain.model.User> = kotlinx.coroutines.flow.flow {
-                val user = com.example.data.remote.SupabaseClient.client.auth.currentUserOrNull()
-                if (user != null) {
-                    profileRepository.updateProfile(com.example.domain.model.UserProfile(id = user.id, username = handle, displayName = name))
-                    emit(com.example.domain.model.User(id = user.id, name = name, handle = handle))
-                }
-            }
-        }
     }
     
     val authRepository: AuthRepository by lazy {
@@ -127,14 +78,12 @@ object AppContainer {
         MockMusicRepositoryImpl(musicCatalogProvider, localDataStore)
     }
 
-    // 5. Centralized Playback Manager & Repository
     val playbackManager: PlaybackManager by lazy {
         val manager = PlaybackManager(
             playbackProvider = playbackProvider,
             localDataStore = localDataStore,
             listeningHistoryRepository = listeningHistoryRepository
         )
-        // Initialize with default sample track
         val defaultTracks = com.example.data.mock.MockMusicCatalog.sampleTracks
         if (defaultTracks.isNotEmpty()) {
             manager.playTrack(defaultTracks[0], defaultTracks)
@@ -147,7 +96,6 @@ object AppContainer {
         MockPlaybackRepositoryImpl(playbackManager)
     }
 
-    // 6. Domain Use Cases
     val playTrackUseCase by lazy { PlayTrackUseCase(playbackRepository) }
     val playPlaylistUseCase by lazy { PlayPlaylistUseCase(playbackRepository) }
     val togglePlayPauseUseCase by lazy { TogglePlayPauseUseCase(playbackRepository) }
@@ -166,8 +114,6 @@ object AppContainer {
     val getRecommendationsUseCase by lazy { GetRecommendationsUseCase(recommendationRepository) }
     val recordListeningEventUseCase by lazy { RecordListeningEventUseCase(listeningHistoryRepository) }
 
-    val getUserProfileUseCase by lazy { GetUserProfileUseCase(userRepository) }
-    val updateUserProfileUseCase by lazy { UpdateUserProfileUseCase(userRepository) }
     val getEntitlementsUseCase by lazy { GetEntitlementsUseCase(entitlementRepository) }
     val setSubscriptionTierUseCase by lazy { SetSubscriptionTierUseCase(entitlementRepository) }
 }

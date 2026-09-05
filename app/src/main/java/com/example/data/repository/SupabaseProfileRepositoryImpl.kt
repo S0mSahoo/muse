@@ -21,36 +21,58 @@ class SupabaseProfileRepositoryImpl : ProfileRepository {
     private val client = SupabaseClient.client
     
     override suspend fun getProfile(userId: String): UserProfile? {
+        println("ProfileRepo: Profile lookup started for user: $userId")
         return try {
             val list = client.from("profiles")
                 .select { filter { eq("id", userId) } }
                 .decodeList<UserProfile>()
-            list.firstOrNull()
+            val profile = list.firstOrNull()
+            if (profile == null) {
+                println("ProfileRepo: Profile not found for user: $userId")
+            } else {
+                println("ProfileRepo: Profile found successfully for user: $userId")
+            }
+            profile
         } catch (e: Exception) {
-            println("ProfileRepo: Error getting profile: ${e.message}")
-            null
+            println("ProfileRepo: Real database/network/decoding error during lookup for user $userId: ${e.message}")
+            throw e
         }
     }
     
     override suspend fun createProfile(profile: UserProfile) {
+        println("ProfileRepo: Recovery upsert attempt for user: ${profile.id}")
         val dto = ProfileTableDto(
             id = profile.id,
             username = profile.username,
             displayName = profile.displayName,
             avatarUrl = profile.avatarUrl
         )
-        client.from("profiles").insert(dto)
+        try {
+            // Use upsert to be safe and idempotent if trigger or another process already inserted it
+            client.from("profiles").upsert(dto)
+            println("ProfileRepo: Recovery upsert success for user: ${profile.id}")
+        } catch (e: Exception) {
+            println("ProfileRepo: Recovery upsert failure for user ${profile.id}: ${e.message}")
+            throw e
+        }
     }
     
     override suspend fun updateProfile(profile: UserProfile) {
+        println("ProfileRepo: Profile update attempt for user: ${profile.id}")
         val dto = ProfileTableDto(
             id = profile.id,
             username = profile.username,
             displayName = profile.displayName,
             avatarUrl = profile.avatarUrl
         )
-        client.from("profiles").update(dto) {
-            filter { eq("id", profile.id) }
+        try {
+            client.from("profiles").update(dto) {
+                filter { eq("id", profile.id) }
+            }
+            println("ProfileRepo: Profile update success for user: ${profile.id}")
+        } catch (e: Exception) {
+            println("ProfileRepo: Profile update failure for user ${profile.id}: ${e.message}")
+            throw e
         }
     }
 }

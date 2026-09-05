@@ -14,16 +14,21 @@ interface ProfileRepository {
         defaultUsername: String? = null,
         defaultAvatarUrl: String? = null
     ) {
+        println("ProfileRepo: Ensuring profile exists for user: $userId")
         val existing = getProfile(userId)
         if (existing == null) {
+            println("ProfileRepo: Profile not found during recovery check, attempting upsert/creation for user: $userId")
             createProfile(
                 UserProfile(
                     id = userId,
-                    username = defaultUsername ?: "user_${userId.take(8)}",
-                    displayName = defaultName ?: "User",
+                    username = defaultUsername,
+                    displayName = defaultName,
                     avatarUrl = defaultAvatarUrl
                 )
             )
+            println("ProfileRepo: Recovery upsert/creation success for user: $userId")
+        } else {
+            println("ProfileRepo: Profile already exists for user: $userId, skipping recovery creation")
         }
     }
 }

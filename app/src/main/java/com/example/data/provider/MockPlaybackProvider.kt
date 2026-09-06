@@ -1,6 +1,7 @@
 package com.example.data.provider
 
 import com.example.domain.model.Track
+import com.example.domain.provider.PlaybackListener
 import com.example.domain.provider.PlaybackProvider
 
 /**
@@ -14,6 +15,10 @@ class MockPlaybackProvider : PlaybackProvider {
     private var currentPositionMs: Long = 0L
     private var queue: List<Track> = emptyList()
     private var queueIndex: Int = 0
+
+    override fun setPlaybackListener(listener: PlaybackListener?) {
+        // No-op for mock provider
+    }
 
     override fun play(track: Track) {
         currentTrack = track
@@ -59,5 +64,10 @@ class MockPlaybackProvider : PlaybackProvider {
         if (tracks.isNotEmpty()) {
             currentTrack = tracks[queueIndex]
         }
+    }
+
+    override fun release() {
+        isPlaying = false
+        currentTrack = null
     }
 }

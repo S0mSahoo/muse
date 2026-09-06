@@ -91,6 +91,8 @@ data class DailyAdState(
 data class PlaybackState(
     val currentTrack: Track? = null,
     val isPlaying: Boolean = false,
+    val isBuffering: Boolean = false,
+    val playbackError: String? = null,
     val progressMs: Long = 0L,
     val durationMs: Long = 1L,
     val isShuffle: Boolean = false,

@@ -27,14 +27,14 @@ interface YouTubeApiService {
 
     @GET("videos")
     suspend fun getVideosById(
-        @Query("part") part: String = "snippet,contentDetails,topicDetails",
+        @Query("part") part: String = "snippet,contentDetails,topicDetails,status",
         @Query("id") ids: String,
         @Query("key") apiKey: String
     ): YouTubeVideoListResponseDto
 
     @GET("videos")
     suspend fun getPopularMusicVideos(
-        @Query("part") part: String = "snippet,contentDetails,topicDetails",
+        @Query("part") part: String = "snippet,contentDetails,topicDetails,status",
         @Query("chart") chart: String = "mostPopular",
         @Query("videoCategoryId") videoCategoryId: String = "10",
         @Query("maxResults") maxResults: Int = 25,

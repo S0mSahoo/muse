@@ -72,11 +72,30 @@ object AppContainer {
         )
     }
 
+    private var appContext: android.content.Context? = null
+
+    fun init(context: android.content.Context) {
+        appContext = context.applicationContext
+    }
+
+    val youTubePlaybackProvider: com.example.data.provider.youtube.YouTubePlaybackProvider by lazy {
+        com.example.data.provider.youtube.YouTubePlaybackProvider(contextProvider = { appContext })
+    }
+
+    val nativeAudioPlaybackProvider: com.example.data.provider.direct.NativeAudioPlaybackProvider by lazy {
+        com.example.data.provider.direct.NativeAudioPlaybackProvider()
+    }
+
+    val compositePlaybackProvider: com.example.data.provider.CompositePlaybackProvider by lazy {
+        com.example.data.provider.CompositePlaybackProvider(
+            youTubePlaybackProvider = youTubePlaybackProvider,
+            nativePlaybackProvider = nativeAudioPlaybackProvider
+        )
+    }
+
     // Active music catalog provider (Federated real online music with YouTube and Mock fallback)
     val musicCatalogProvider: MusicCatalogProvider by lazy { compositeMusicCatalogProvider }
-    val playbackProvider: PlaybackProvider by lazy {
-        com.example.data.provider.AndroidAudioPlaybackProvider()
-    }
+    val playbackProvider: PlaybackProvider by lazy { compositePlaybackProvider }
 
     val listeningHistoryRepository: ListeningHistoryRepository by lazy { 
         SupabaseListeningHistoryRepositoryImpl(authRepository, localDataStore) 

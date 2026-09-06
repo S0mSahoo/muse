@@ -76,7 +76,16 @@ data class YouTubeVideoDto(
     @field:Json(name = "id") val id: String? = null,
     @field:Json(name = "snippet") val snippet: YouTubeSnippetDto? = null,
     @field:Json(name = "contentDetails") val contentDetails: YouTubeContentDetailsDto? = null,
-    @field:Json(name = "topicDetails") val topicDetails: YouTubeTopicDetailsDto? = null
+    @field:Json(name = "topicDetails") val topicDetails: YouTubeTopicDetailsDto? = null,
+    @field:Json(name = "status") val status: YouTubeStatusDto? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class YouTubeStatusDto(
+    @field:Json(name = "uploadStatus") val uploadStatus: String? = null,
+    @field:Json(name = "privacyStatus") val privacyStatus: String? = null,
+    @field:Json(name = "embeddable") val embeddable: Boolean? = null,
+    @field:Json(name = "publicStatsViewable") val publicStatsViewable: Boolean? = null
 )
 
 @JsonClass(generateAdapter = true)

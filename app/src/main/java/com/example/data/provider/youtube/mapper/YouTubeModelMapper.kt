@@ -34,10 +34,11 @@ object YouTubeModelMapper {
         val artwork = snippet?.thumbnails?.getBestArtworkUrl() ?: ""
         val genres = extractGenres(videoDto)
         val contentType = determineContentType(rawTitle, videoDto.snippet?.tags)
-        val availability = if (videoDto.contentDetails?.regionRestriction?.blocked?.isNotEmpty() == true) {
-            PlaybackAvailability.REGION_RESTRICTED
-        } else {
-            PlaybackAvailability.AVAILABLE
+        val availability = when {
+            videoDto.status?.embeddable == false -> PlaybackAvailability.EMBEDDING_DISABLED
+            videoDto.contentDetails?.regionRestriction?.blocked?.isNotEmpty() == true -> PlaybackAvailability.REGION_RESTRICTED
+            videoDto.status?.privacyStatus == "private" -> PlaybackAvailability.UNAVAILABLE
+            else -> PlaybackAvailability.AVAILABLE
         }
 
         return Track(

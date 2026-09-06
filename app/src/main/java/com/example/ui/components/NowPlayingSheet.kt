@@ -1,6 +1,8 @@
 package com.example.ui.components
 
+import android.view.ViewGroup
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -30,6 +32,7 @@ import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
@@ -40,6 +43,7 @@ import androidx.compose.material.icons.filled.RepeatOne
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -65,6 +69,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import com.example.di.AppContainer
 import com.example.domain.model.PlaybackState
 import com.example.ui.theme.BackgroundDark
 import com.example.ui.theme.BorderGlass
@@ -90,6 +96,9 @@ fun NowPlayingSheet(
     onToggleRepeat: () -> Unit
 ) {
     val track = playbackState.currentTrack ?: return
+    val isYouTubeTrack = track.providerId == "youtube" ||
+            track.source.equals("YOUTUBE", ignoreCase = true) ||
+            track.id.startsWith("yt_")
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showOptionsMenu by remember { mutableStateOf(false) }
 
@@ -141,13 +150,14 @@ fun NowPlayingSheet(
 
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            text = "PLAYING FROM PLAYLIST",
+                            text = if (isYouTubeTrack) "YOUTUBE PLAYER" else "PLAYING FROM PLAYLIST",
                             style = MaterialTheme.typography.labelSmall,
-                            color = TextSecondary,
-                            letterSpacing = 1.sp
+                            color = if (isYouTubeTrack) Color(0xFFFF6B6B) else TextSecondary,
+                            letterSpacing = 1.sp,
+                            fontWeight = FontWeight.SemiBold
                         )
                         Text(
-                            text = track.album.ifEmpty { "MUSE Curations" },
+                            text = track.album.ifEmpty { if (isYouTubeTrack) "YouTube Catalog" else "MUSE Curations" },
                             style = MaterialTheme.typography.titleSmall,
                             color = TextPrimary,
                             maxLines = 1,
@@ -166,23 +176,105 @@ fun NowPlayingSheet(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // Big Album Artwork
-                Box(
-                    modifier = Modifier
-                        .size(280.dp)
-                        .clip(RoundedCornerShape(22.dp))
-                        .border(1.dp, BorderGlass, RoundedCornerShape(22.dp))
-                ) {
-                    MusicArtworkImage(
-                        artworkUrl = track.artworkUrl,
-                        contentDescription = "Artwork for ${track.title}",
-                        modifier = Modifier.fillMaxSize(),
-                        shape = RoundedCornerShape(22.dp),
-                        fallbackGradientColors = listOf(track.dominantColorHex, 0xFF08080C)
-                    )
+                // Media Presentation Area: Embedded YouTube IFrame Player or Big Album Artwork
+                if (isYouTubeTrack) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(230.dp)
+                            .clip(RoundedCornerShape(22.dp))
+                            .border(1.dp, BorderGlass, RoundedCornerShape(22.dp))
+                            .background(Color.Black),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        AndroidView(
+                            factory = { ctx ->
+                                val playerView = AppContainer.youTubePlaybackProvider.getPlayerView(ctx)
+                                (playerView.parent as? ViewGroup)?.removeView(playerView)
+                                playerView
+                            },
+                            modifier = Modifier.fillMaxSize()
+                        )
+
+                        if (playbackState.isBuffering) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(Color.Black.copy(alpha = 0.5f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(
+                                    color = MuseVioletLight,
+                                    modifier = Modifier.size(36.dp),
+                                    strokeWidth = 3.dp
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(280.dp)
+                            .clip(RoundedCornerShape(22.dp))
+                            .border(1.dp, BorderGlass, RoundedCornerShape(22.dp))
+                    ) {
+                        MusicArtworkImage(
+                            artworkUrl = track.artworkUrl,
+                            contentDescription = "Artwork for ${track.title}",
+                            modifier = Modifier.fillMaxSize(),
+                            shape = RoundedCornerShape(22.dp),
+                            fallbackGradientColors = listOf(track.dominantColorHex, 0xFF08080C)
+                        )
+
+                        if (playbackState.isBuffering) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(Color.Black.copy(alpha = 0.4f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(
+                                    color = MuseVioletLight,
+                                    modifier = Modifier.size(36.dp),
+                                    strokeWidth = 3.dp
+                                )
+                            }
+                        }
+                    }
                 }
 
-                Spacer(modifier = Modifier.height(24.dp))
+                // Playback Error Banner (if error occurred)
+                AnimatedVisibility(visible = playbackState.playbackError != null) {
+                    playbackState.playbackError?.let { errorMsg ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 10.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color(0x33EF4444))
+                                .border(1.dp, Color(0x66EF4444), RoundedCornerShape(12.dp))
+                                .padding(horizontal = 14.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Info,
+                                contentDescription = null,
+                                tint = Color(0xFFFCA5A5),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = errorMsg,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFFFEE2E2),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
 
                 // Title, Artist, and Like Button
                 Row(
@@ -334,12 +426,20 @@ fun NowPlayingSheet(
                             .clickable(onClick = onTogglePlayPause),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = if (playbackState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            contentDescription = if (playbackState.isPlaying) "Pause" else "Play",
-                            tint = Color.White,
-                            modifier = Modifier.size(36.dp)
-                        )
+                        if (playbackState.isBuffering) {
+                            CircularProgressIndicator(
+                                color = Color.White,
+                                modifier = Modifier.size(28.dp),
+                                strokeWidth = 3.dp
+                            )
+                        } else {
+                            Icon(
+                                imageVector = if (playbackState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                contentDescription = if (playbackState.isPlaying) "Pause" else "Play",
+                                tint = Color.White,
+                                modifier = Modifier.size(36.dp)
+                            )
+                        }
                     }
 
                     IconButton(
@@ -377,7 +477,6 @@ fun NowPlayingSheet(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Honest, development-safe audio representation
                     Row(
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))
@@ -390,13 +489,13 @@ fun NowPlayingSheet(
                         Icon(
                             imageVector = Icons.Default.GraphicEq,
                             contentDescription = null,
-                            tint = MuseVioletLight,
+                            tint = if (isYouTubeTrack) Color(0xFFFF6B6B) else MuseVioletLight,
                             modifier = Modifier.size(14.dp)
                         )
                         Text(
-                            text = "MUSE Audio Core • Stereo",
+                            text = if (isYouTubeTrack) "YouTube Engine • IFrame Player" else "MUSE Audio Core • Stereo",
                             style = MaterialTheme.typography.labelSmall,
-                            color = MuseVioletLight,
+                            color = if (isYouTubeTrack) Color(0xFFFF8E8E) else MuseVioletLight,
                             fontWeight = FontWeight.Medium
                         )
                     }

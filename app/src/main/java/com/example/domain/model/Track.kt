@@ -13,6 +13,7 @@ enum class PlaybackAvailability {
     AVAILABLE,
     REGION_RESTRICTED,
     PREVIEW_ONLY,
+    EMBEDDING_DISABLED,
     UNAVAILABLE
 }
 

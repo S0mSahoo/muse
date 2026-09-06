@@ -50,7 +50,16 @@ object AppContainer {
     val localDataStore: LocalDataStore by lazy { LocalDataStore() }
     val supabaseClient = SupabaseClient.client
 
-    val musicCatalogProvider: MusicCatalogProvider by lazy { MockMusicCatalogProvider() }
+    val mockMusicCatalogProvider: MusicCatalogProvider by lazy { MockMusicCatalogProvider() }
+    val youTubeMusicCatalogProvider: com.example.data.provider.youtube.YouTubeMusicCatalogProvider by lazy { 
+        com.example.data.provider.youtube.YouTubeMusicCatalogProvider() 
+    }
+    val directMusicCatalogProvider: com.example.data.provider.direct.DirectMusicCatalogProvider by lazy { 
+        com.example.data.provider.direct.DirectMusicCatalogProvider() 
+    }
+
+    // Active music catalog provider (keeps Mock as active provider/fallback)
+    val musicCatalogProvider: MusicCatalogProvider by lazy { mockMusicCatalogProvider }
     val playbackProvider: PlaybackProvider by lazy { MockPlaybackProvider() }
 
     val listeningHistoryRepository: ListeningHistoryRepository by lazy { 

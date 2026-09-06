@@ -1,5 +1,21 @@
 package com.example.domain.model
 
+enum class ProviderContentType {
+    SONG,
+    MUSIC_VIDEO,
+    PODCAST,
+    AUDIO_TRACK,
+    OFFICIAL_RELEASE,
+    LIVE_PERFORMANCE
+}
+
+enum class PlaybackAvailability {
+    AVAILABLE,
+    REGION_RESTRICTED,
+    PREVIEW_ONLY,
+    UNAVAILABLE
+}
+
 data class Track(
     val id: String,
     val title: String,
@@ -17,5 +33,7 @@ data class Track(
     val providerId: String = "muse_mock",
     val providerName: String = "MUSE Catalog",
     val source: String = "MUSE_CATALOG",
-    val sourceTrackId: String = ""
+    val sourceTrackId: String = "",
+    val contentType: ProviderContentType = ProviderContentType.SONG,
+    val playbackAvailability: PlaybackAvailability = PlaybackAvailability.AVAILABLE
 )

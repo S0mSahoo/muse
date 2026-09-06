@@ -369,6 +369,8 @@ class PlaybackManager(
                     }
                     if (state.isRepeat) {
                         seekTo(0L)
+                        val newSession = createNewSession(state.currentTrack.id)
+                        startProgressTracker(newSession)
                     } else {
                         next(isNaturalCompletion = true)
                     }

@@ -110,76 +110,76 @@ class SupabaseListeningHistoryRepositoryImpl(
 
         val userId = getUserId() ?: return
 
-        val shouldPersist = mutex.withLock {
+        mutex.withLock {
             val now = System.currentTimeMillis()
             val lastTime = lastPersistedTime[historyId] ?: 0L
-            if (now - lastTime >= 15_000L) {
-                lastPersistedTime[historyId] = now
-                true
-            } else {
-                false
+            if (now - lastTime < 15_000L) {
+                return
             }
-        }
 
-        if (!shouldPersist) return
-
-        try {
-            client.from("listening_history")
-                .update({
-                    set("position_ms", positionMs)
-                    set("duration_ms", durationMs)
-                }) {
-                    filter {
-                        eq("id", historyId)
-                        eq("user_id", userId)
+            try {
+                client.from("listening_history")
+                    .update({
+                        set("position_ms", positionMs)
+                        set("duration_ms", durationMs)
+                    }) {
+                        filter {
+                            eq("id", historyId)
+                            eq("user_id", userId)
+                        }
                     }
-                }
-            println("ListeningHistoryRepo: Updated progress for history session $historyId ($positionMs/$durationMs ms)")
-        } catch (e: Exception) {
-            println("ListeningHistoryRepo: Error recording playback progress for session $historyId: ${e.message}")
-            throw e
+                lastPersistedTime[historyId] = System.currentTimeMillis()
+                println("ListeningHistoryRepo: Updated progress for history session $historyId ($positionMs/$durationMs ms)")
+            } catch (e: Exception) {
+                println("ListeningHistoryRepo: Error recording playback progress for session $historyId: ${e.message}")
+                throw e
+            }
         }
     }
 
     override suspend fun recordPlaybackCompleted(historyId: String, durationMs: Long) {
-        val shouldComplete = mutex.withLock {
-            if (completedSessions.contains(historyId)) {
-                false
-            } else {
-                completedSessions.add(historyId)
-                true
-            }
-        }
-
-        if (!shouldComplete) {
-            println("ListeningHistoryRepo: Duplicate completion ignored for session $historyId")
-            return
-        }
-
         if (isGuest()) {
-            localDataStore.updateGuestHistoryCompleted(historyId, durationMs)
-            println("ListeningHistoryRepo: Completed guest history session $historyId")
+            val shouldComplete = mutex.withLock {
+                if (completedSessions.contains(historyId)) {
+                    false
+                } else {
+                    completedSessions.add(historyId)
+                    true
+                }
+            }
+            if (shouldComplete) {
+                localDataStore.updateGuestHistoryCompleted(historyId, durationMs)
+                println("ListeningHistoryRepo: Completed guest history session $historyId")
+            }
             return
         }
 
         val userId = getUserId() ?: return
 
-        try {
-            client.from("listening_history")
-                .update({
-                    set("completed", true)
-                    set("duration_ms", durationMs)
-                    set("position_ms", durationMs)
-                }) {
-                    filter {
-                        eq("id", historyId)
-                        eq("user_id", userId)
+        mutex.withLock {
+            if (completedSessions.contains(historyId)) {
+                println("ListeningHistoryRepo: Duplicate completion ignored for session $historyId")
+                return
+            }
+
+            try {
+                client.from("listening_history")
+                    .update({
+                        set("completed", true)
+                        set("duration_ms", durationMs)
+                        set("position_ms", durationMs)
+                    }) {
+                        filter {
+                            eq("id", historyId)
+                            eq("user_id", userId)
+                        }
                     }
-                }
-            println("ListeningHistoryRepo: Marked history session $historyId as completed in Supabase")
-        } catch (e: Exception) {
-            println("ListeningHistoryRepo: Error recording playback completion for session $historyId: ${e.message}")
-            throw e
+                completedSessions.add(historyId)
+                println("ListeningHistoryRepo: Marked history session $historyId as completed in Supabase")
+            } catch (e: Exception) {
+                println("ListeningHistoryRepo: Error recording playback completion for session $historyId: ${e.message}")
+                throw e
+            }
         }
     }
 

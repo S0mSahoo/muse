@@ -29,7 +29,7 @@ fun AuthGate(
             is AuthState.Loading -> {
                 AuthLoadingScreen()
             }
-            is AuthState.Authenticated -> {
+            is AuthState.Authenticated, is AuthState.Guest -> {
                 val navController = rememberNavController()
                 MainScreen(navController = navController)
             }

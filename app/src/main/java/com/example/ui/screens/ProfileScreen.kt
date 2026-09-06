@@ -91,13 +91,16 @@ fun ProfileScreen(
     
     val authUserEmail = remember { mutableStateOf<String?>(null) }
     val userIdState = remember { mutableStateOf<String?>(null) }
+    val guestSessionState = remember { mutableStateOf<com.example.domain.model.GuestSession?>(null) }
     
     LaunchedEffect(Unit) {
+        guestSessionState.value = authRepository.getGuestSession()
         userIdState.value = authRepository.getCurrentSession()
         authUserEmail.value = authRepository.getCurrentUserEmail()
     }
     val userId = userIdState.value ?: ""
     val email = authUserEmail.value
+    val guestSession = guestSessionState.value
     var userProfile by remember { mutableStateOf<UserProfile?>(null) }
     var isLoading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -196,7 +199,8 @@ fun ProfileScreen(
                     }
 
                     Text(
-                        text = userProfile?.displayName?.takeIf { !it.isBlank() } 
+                        text = guestSession?.name 
+                            ?: userProfile?.displayName?.takeIf { !it.isBlank() } 
                             ?: email?.substringBefore("@")?.replaceFirstChar { it.uppercase() } 
                             ?: (if (isLoading) "Loading..." else "MUSE User"),
                         style = MaterialTheme.typography.titleLarge,
@@ -206,9 +210,11 @@ fun ProfileScreen(
                     )
 
                     Text(
-                        text = userProfile?.username?.takeIf { !it.isBlank() } 
-                            ?: email 
-                            ?: "",
+                        text = if (guestSession != null) {
+                            "Age: ${guestSession.age} • ${guestSession.country}"
+                        } else {
+                            userProfile?.username?.takeIf { !it.isBlank() } ?: email ?: ""
+                        },
                         style = MaterialTheme.typography.bodyMedium,
                         color = TextSecondary,
                         modifier = Modifier.padding(top = 2.dp)
@@ -216,7 +222,7 @@ fun ProfileScreen(
 
                     val dobText = userProfile?.dob
                     val genderText = userProfile?.gender
-                    if (!dobText.isNullOrBlank() || !genderText.isNullOrBlank()) {
+                    if (guestSession == null && (!dobText.isNullOrBlank() || !genderText.isNullOrBlank())) {
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = listOfNotNull(dobText, genderText).joinToString(" • "),
@@ -225,20 +231,20 @@ fun ProfileScreen(
                         )
                     }
 
-                    // Tier Status Pill
+                    // Tier Status Pill / Guest Mode badge
                     Box(
                         modifier = Modifier
                             .padding(top = 12.dp)
                             .clip(RoundedCornerShape(20.dp))
-                            .background(MuseViolet.copy(alpha = 0.15f))
-                            .border(1.dp, MuseViolet.copy(alpha = 0.3f), RoundedCornerShape(20.dp))
+                            .background(if (guestSession != null) MuseCoral.copy(alpha = 0.15f) else MuseViolet.copy(alpha = 0.15f))
+                            .border(1.dp, if (guestSession != null) MuseCoral.copy(alpha = 0.3f) else MuseViolet.copy(alpha = 0.3f), RoundedCornerShape(20.dp))
                             .padding(horizontal = 14.dp, vertical = 6.dp)
                     ) {
-                        val tierTitle = "MUSE Standard Tier"
+                        val tierTitle = if (guestSession != null) "Guest Mode" else "MUSE Standard Tier"
                         Text(
                             text = tierTitle,
                             style = MaterialTheme.typography.labelSmall,
-                            color = MuseVioletLight,
+                            color = if (guestSession != null) MuseCoral else MuseVioletLight,
                             fontWeight = FontWeight.SemiBold
                         )
                     }
@@ -351,10 +357,23 @@ fun ProfileScreen(
                         subtitle = "On-device profile state and preferences",
                         onClick = { selectedInfoDialog = "privacy" }
                     )
+                    if (guestSession != null) {
+                        ProfileOptionItem(
+                            icon = Icons.Default.Person,
+                            title = "Sign in with Google",
+                            subtitle = "Upgrade your guest session to a full MUSE account",
+                            onClick = {
+                                scope.launch {
+                                    authRepository.signOut()
+                                }
+                            }
+                        )
+                    }
+
                     ProfileOptionItem(
                         icon = Icons.Default.Logout,
                         title = "Sign Out",
-                        subtitle = "Sign out of your MUSE account",
+                        subtitle = if (guestSession != null) "Exit guest mode" else "Sign out of your MUSE account",
                         onClick = {
                             scope.launch {
                                 authRepository.signOut()

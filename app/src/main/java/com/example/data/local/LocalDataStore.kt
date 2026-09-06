@@ -1,6 +1,7 @@
 package com.example.data.local
 
 import com.example.domain.model.Playlist
+import com.example.domain.model.GuestSession
 import com.example.domain.model.User
 import com.example.domain.model.UserEntitlements
 import com.example.domain.model.UserTier
@@ -24,6 +25,17 @@ class LocalDataStore {
 
     private val _userPlaylists = MutableStateFlow<List<Playlist>>(emptyList())
     val userPlaylists: StateFlow<List<Playlist>> = _userPlaylists.asStateFlow()
+
+    private val _guestSession = MutableStateFlow<GuestSession?>(null)
+    val guestSession: StateFlow<GuestSession?> = _guestSession.asStateFlow()
+
+    fun setGuestSession(session: GuestSession?) {
+        _guestSession.value = session
+    }
+
+    fun clearGuestSession() {
+        _guestSession.value = null
+    }
 
     private val _userProfile = MutableStateFlow(
         User(
@@ -51,6 +63,14 @@ class LocalDataStore {
 
     fun isTrackLiked(trackId: String): Boolean {
         return _likedTrackIds.value.contains(trackId)
+    }
+
+    fun addTrackLike(trackId: String) {
+        _likedTrackIds.update { it + trackId }
+    }
+
+    fun removeTrackLike(trackId: String) {
+        _likedTrackIds.update { it - trackId }
     }
 
     fun toggleTrackLike(trackId: String): Boolean {

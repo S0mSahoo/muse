@@ -51,6 +51,9 @@ object AppContainer {
     val supabaseClient = SupabaseClient.client
 
     val mockMusicCatalogProvider: MusicCatalogProvider by lazy { MockMusicCatalogProvider() }
+    val onlineMusicCatalogProvider: MusicCatalogProvider by lazy {
+        com.example.data.provider.online.OnlineMusicCatalogProvider()
+    }
     val youTubeMusicCatalogProvider: com.example.data.provider.youtube.YouTubeMusicCatalogProvider by lazy { 
         com.example.data.provider.youtube.YouTubeMusicCatalogProvider() 
     }
@@ -58,9 +61,22 @@ object AppContainer {
         com.example.data.provider.direct.DirectMusicCatalogProvider() 
     }
 
-    // Active music catalog provider (keeps Mock as active provider/fallback)
-    val musicCatalogProvider: MusicCatalogProvider by lazy { mockMusicCatalogProvider }
-    val playbackProvider: PlaybackProvider by lazy { MockPlaybackProvider() }
+    val compositeMusicCatalogProvider: MusicCatalogProvider by lazy {
+        com.example.data.provider.CompositeMusicCatalogProvider(
+            primaryProvider = onlineMusicCatalogProvider,
+            providers = mapOf(
+                "youtube" to youTubeMusicCatalogProvider,
+                "muse_direct" to directMusicCatalogProvider
+            ),
+            fallbackProvider = mockMusicCatalogProvider
+        )
+    }
+
+    // Active music catalog provider (Federated real online music with YouTube and Mock fallback)
+    val musicCatalogProvider: MusicCatalogProvider by lazy { compositeMusicCatalogProvider }
+    val playbackProvider: PlaybackProvider by lazy {
+        com.example.data.provider.AndroidAudioPlaybackProvider()
+    }
 
     val listeningHistoryRepository: ListeningHistoryRepository by lazy { 
         SupabaseListeningHistoryRepositoryImpl(authRepository, localDataStore) 

@@ -10,8 +10,8 @@ import com.example.domain.provider.MusicCatalogProvider
 
 /**
  * Composite provider that routes lookup queries to the appropriate underlying provider
- * based on track/artist/album IDs (e.g. `yt_` -> YouTube, `direct_` -> Direct Master, other -> Mock),
- * and can aggregate or prioritize search across providers.
+ * based on track/artist/album IDs (e.g. `yt_` -> YouTube, `net_` -> Online Music Network,
+ * `direct_` -> Direct Master, other -> Mock), and aggregates search across providers.
  */
 class CompositeMusicCatalogProvider(
     private val primaryProvider: MusicCatalogProvider,
@@ -26,13 +26,16 @@ class CompositeMusicCatalogProvider(
         return when {
             id.startsWith("yt_") -> providers["youtube"] ?: primaryProvider
             id.startsWith("direct_") -> providers["muse_direct"] ?: primaryProvider
-            else -> providers[id] ?: primaryProvider
+            id.startsWith("net_") -> primaryProvider
+            else -> fallbackProvider ?: primaryProvider
         }
     }
 
     override suspend fun search(query: String): List<Track> {
         val primaryResults = primaryProvider.search(query)
-        if (primaryResults.isNotEmpty()) return primaryResults
+        if (primaryResults.isNotEmpty()) {
+            return primaryResults
+        }
         for (provider in providers.values) {
             val res = provider.search(query)
             if (res.isNotEmpty()) return res
@@ -79,7 +82,9 @@ class CompositeMusicCatalogProvider(
     }
 
     override suspend fun getRecentlyPlayedTracks(): List<Track> {
-        return primaryProvider.getRecentlyPlayedTracks()
+        val tracks = primaryProvider.getRecentlyPlayedTracks()
+        if (tracks.isNotEmpty()) return tracks
+        return fallbackProvider?.getRecentlyPlayedTracks() ?: emptyList()
     }
 
     override suspend fun getFreshDiscoveries(): List<Track> {
@@ -119,6 +124,8 @@ class CompositeMusicCatalogProvider(
     }
 
     override suspend fun getAllTracks(): List<Track> {
-        return primaryProvider.getAllTracks()
+        val all = primaryProvider.getAllTracks()
+        if (all.isNotEmpty()) return all
+        return fallbackProvider?.getAllTracks() ?: emptyList()
     }
 }

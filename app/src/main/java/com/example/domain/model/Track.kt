@@ -24,6 +24,7 @@ data class Track(
     val album: String = "",
     val albumId: String = "",
     val artworkUrl: String = "",
+    val audioUrl: String = "",
     val durationMs: Long = 210000L,
     val releaseYear: Int = 2024,
     val genres: List<String> = emptyList(),

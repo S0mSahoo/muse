@@ -45,6 +45,7 @@ class SupabaseLikedTracksRepositoryImpl(
     private var currentAuthenticatedUserId: String? = null
     private var activeRefreshJob: Job? = null
     private val refreshMutex = Mutex()
+    private val toggleMutex = Mutex()
 
     init {
         observeAuthState()
@@ -226,13 +227,15 @@ class SupabaseLikedTracksRepositoryImpl(
     }
 
     override suspend fun toggleLike(trackId: String): Boolean {
-        val currentlyLiked = isLiked(trackId)
-        if (currentlyLiked) {
-            removeLike(trackId)
-            return false
-        } else {
-            addLike(trackId)
-            return true
+        return toggleMutex.withLock {
+            val currentlyLiked = isLiked(trackId)
+            if (currentlyLiked) {
+                removeLike(trackId)
+                false
+            } else {
+                addLike(trackId)
+                true
+            }
         }
     }
 }

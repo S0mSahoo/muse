@@ -24,7 +24,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Diamond
 import androidx.compose.material.icons.filled.GraphicEq
-import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Security
@@ -33,45 +32,45 @@ import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.LaunchedEffect
-import com.example.domain.model.UserProfile
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
-import kotlinx.coroutines.launch
-import coil.request.ImageRequest
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.example.di.AppContainer
-import com.example.domain.model.User
-import com.example.domain.model.UserTier
+import com.example.domain.model.UserProfile
+import com.example.ui.screens.profile.ProfileViewModel
+import com.example.ui.screens.profile.SonicSignatureUiState
 import com.example.ui.theme.BackgroundDark
 import com.example.ui.theme.BorderSubtle
 import com.example.ui.theme.MuseCoral
-import com.example.ui.theme.MuseCyan
-import com.example.ui.theme.MuseEmerald
-import com.example.ui.theme.MuseIndigo
 import com.example.ui.theme.MuseViolet
 import com.example.ui.theme.MuseVioletLight
 import com.example.ui.theme.SurfaceCard
@@ -79,46 +78,26 @@ import com.example.ui.theme.SurfaceElevated
 import com.example.ui.theme.TextMuted
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
+import kotlinx.coroutines.launch
 
 @Composable
 fun ProfileScreen(
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    viewModel: ProfileViewModel = viewModel()
 ) {
     val scope = rememberCoroutineScope()
-    val authRepository = AppContainer.authRepository
-    val profileRepository = AppContainer.profileRepository
     val musicRepository = AppContainer.musicRepository
-    
-    val authUserEmail = remember { mutableStateOf<String?>(null) }
-    val userIdState = remember { mutableStateOf<String?>(null) }
-    val guestSessionState = remember { mutableStateOf<com.example.domain.model.GuestSession?>(null) }
-    
-    LaunchedEffect(Unit) {
-        guestSessionState.value = authRepository.getGuestSession()
-        userIdState.value = authRepository.getCurrentSession()
-        authUserEmail.value = authRepository.getCurrentUserEmail()
-    }
-    val userId = userIdState.value ?: ""
-    val email = authUserEmail.value
-    val guestSession = guestSessionState.value
-    var userProfile by remember { mutableStateOf<UserProfile?>(null) }
-    var isLoading by remember { mutableStateOf(true) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
-    LaunchedEffect(userId) {
-        if (userId.isNotEmpty()) {
-            try {
-                userProfile = profileRepository.getProfile(userId)
-            } catch (e: Exception) {
-                errorMessage = e.message
-            } finally {
-                isLoading = false
-            }
-        } else {
-            isLoading = false
-        }
+    LaunchedEffect(Unit) {
+        viewModel.loadData()
     }
-    
+
+    val guestSession = uiState.guestSession
+    val userProfile = uiState.userProfile
+    val email = uiState.userEmail
+    val isLoading = uiState.isLoadingProfile
+
     val likedTracks by musicRepository.getLikedTracks().collectAsStateWithLifecycle(initialValue = emptyList())
     val userPlaylists by AppContainer.localDataStore.userPlaylists.collectAsStateWithLifecycle(initialValue = emptyList())
 
@@ -267,7 +246,7 @@ fun ProfileScreen(
                 }
             }
 
-            // Top Listening Genres Vibe
+            // Top Listening Genres / Sonic Signature
             item {
                 Column(
                     modifier = Modifier
@@ -291,30 +270,99 @@ fun ProfileScreen(
                         modifier = Modifier.padding(top = 2.dp, bottom = 12.dp)
                     )
 
-                    // Segmented color bar
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(8.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                    ) {
-                        Box(modifier = Modifier.weight(0.42f).fillMaxHeight().background(MuseViolet))
-                        Box(modifier = Modifier.weight(0.28f).fillMaxHeight().background(MuseIndigo))
-                        Box(modifier = Modifier.weight(0.18f).fillMaxHeight().background(MuseCyan))
-                        Box(modifier = Modifier.weight(0.12f).fillMaxHeight().background(Color(0xFFF59E0B)))
-                    }
+                    when (val signatureState = uiState.sonicSignatureState) {
+                        is SonicSignatureUiState.Loading -> {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(24.dp),
+                                    color = MuseViolet,
+                                    strokeWidth = 2.dp
+                                )
+                            }
+                        }
+                        is SonicSignatureUiState.Empty -> {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(SurfaceElevated)
+                                    .padding(vertical = 14.dp, horizontal = 16.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "Keep listening to build your Sonic Signature.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = TextSecondary,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                        is SonicSignatureUiState.Error -> {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(SurfaceElevated)
+                                    .padding(14.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = "Unable to load listening data.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MuseCoral
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                TextButton(
+                                    onClick = { viewModel.loadSonicSignature() },
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        text = "Retry",
+                                        color = MuseVioletLight,
+                                        style = MaterialTheme.typography.labelMedium
+                                    )
+                                }
+                            }
+                        }
+                        is SonicSignatureUiState.Success -> {
+                            // Segmented color bar
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(8.dp)
+                                    .clip(RoundedCornerShape(4.dp))
+                            ) {
+                                signatureState.genres.forEach { genre ->
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(genre.fraction.coerceAtLeast(0.01f))
+                                            .fillMaxHeight()
+                                            .background(genre.color)
+                                    )
+                                }
+                            }
 
-                    // Legend
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 10.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        GenreLegendItem(color = MuseViolet, name = "Synthwave", percent = "42%")
-                        GenreLegendItem(color = MuseIndigo, name = "Ambient", percent = "28%")
-                        GenreLegendItem(color = MuseCyan, name = "Nu-Disco", percent = "18%")
-                        GenreLegendItem(color = Color(0xFFF59E0B), name = "Acoustic", percent = "12%")
+                            // Legend
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 10.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                signatureState.genres.forEach { genre ->
+                                    GenreLegendItem(
+                                        color = genre.color,
+                                        name = genre.name,
+                                        percent = "${genre.percentage}%"
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -363,9 +411,7 @@ fun ProfileScreen(
                             title = "Sign in with Google",
                             subtitle = "Upgrade your guest session to a full MUSE account",
                             onClick = {
-                                scope.launch {
-                                    authRepository.signOut()
-                                }
+                                viewModel.signOut()
                             }
                         )
                     }
@@ -375,9 +421,7 @@ fun ProfileScreen(
                         title = "Sign Out",
                         subtitle = if (guestSession != null) "Exit guest mode" else "Sign out of your MUSE account",
                         onClick = {
-                            scope.launch {
-                                authRepository.signOut()
-                            }
+                            viewModel.signOut()
                         }
                     )
                 }
@@ -401,11 +445,11 @@ fun ProfileScreen(
                 )
                 "storage" -> Pair(
                     "Storage & Cache",
-                    "Application cache and listening history are safely stored on your local device."
+                    "Application cache and temporary playback data are stored on your local device. Authenticated listening history is synced securely to your cloud profile, while guest history is stored locally on this device."
                 )
                 "privacy" -> Pair(
                     "Privacy & Listening Data",
-                    "MUSE respects your listening privacy. Preferences and playback state remain stored locally."
+                    "MUSE respects your listening privacy. For authenticated accounts, your listening history and profile are securely stored in Supabase to personalize your experience across sessions. For guest users, listening history remains strictly local on this device and is never sent to the cloud."
                 )
                 else -> Pair(
                     "MUSE Settings",
@@ -426,22 +470,42 @@ fun ProfileScreen(
                             var username by remember { mutableStateOf(userProfile?.username ?: "") }
                             var avatarUrl by remember { mutableStateOf(userProfile?.avatarUrl ?: "") }
 
-                            androidx.compose.material3.OutlinedTextField(value = displayName, onValueChange = { displayName = it }, label = { Text("Display Name") })
+                            OutlinedTextField(
+                                value = displayName,
+                                onValueChange = { displayName = it },
+                                label = { Text("Display Name") }
+                            )
                             Spacer(modifier = Modifier.height(8.dp))
-                            androidx.compose.material3.OutlinedTextField(value = username, onValueChange = { username = it }, label = { Text("Username") })
+                            OutlinedTextField(
+                                value = username,
+                                onValueChange = { username = it },
+                                label = { Text("Username") }
+                            )
                             Spacer(modifier = Modifier.height(8.dp))
-                            androidx.compose.material3.OutlinedTextField(value = avatarUrl, onValueChange = { avatarUrl = it }, label = { Text("Avatar URL") })
-                            
-                            Button(onClick = {
-                                scope.launch {
-                                    val updatedProfile = userProfile?.copy(displayName = displayName, username = username, avatarUrl = avatarUrl)
+                            OutlinedTextField(
+                                value = avatarUrl,
+                                onValueChange = { avatarUrl = it },
+                                label = { Text("Avatar URL") }
+                            )
+
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Button(
+                                onClick = {
+                                    val updatedProfile = userProfile?.copy(
+                                        displayName = displayName,
+                                        username = username,
+                                        avatarUrl = avatarUrl
+                                    )
                                     if (updatedProfile != null) {
-                                        profileRepository.updateProfile(updatedProfile)
-                                        userProfile = updatedProfile
-                                        selectedInfoDialog = null
+                                        viewModel.updateProfile(updatedProfile) {
+                                            selectedInfoDialog = null
+                                        }
                                     }
-                                }
-                            }) { Text("Save") }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = MuseViolet)
+                            ) {
+                                Text("Save", color = Color.White)
+                            }
                         }
                     } else {
                         Text(text = body, style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
@@ -502,7 +566,9 @@ private fun GenreLegendItem(
         Text(
             text = "$name $percent",
             style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
-            color = TextSecondary
+            color = TextSecondary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
     }
 }
@@ -557,7 +623,7 @@ private fun ProfileOptionItem(
                 style = MaterialTheme.typography.bodySmall,
                 color = TextSecondary,
                 maxLines = 1,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(top = 2.dp)
             )
         }

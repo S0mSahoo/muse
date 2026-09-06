@@ -1,7 +1,6 @@
 package com.example.data.playback
 
 import com.example.data.local.LocalDataStore
-import com.example.domain.model.ListeningEventType
 import com.example.domain.model.PlaybackState
 import com.example.domain.model.Playlist
 import com.example.domain.model.Track
@@ -22,7 +21,7 @@ import kotlinx.coroutines.launch
 
 /**
  * Centralized Playback Engine and single source of truth for audio playback.
- * Coordinates audio providers, progress tracking, queue management, like synchronization, and listening event metrics.
+ * Coordinates audio providers, progress tracking, queue management, like synchronization, and listening history.
  */
 class PlaybackManager(
     private val playbackProvider: PlaybackProvider,
@@ -47,7 +46,8 @@ class PlaybackManager(
     val playbackState: StateFlow<PlaybackState> = _playbackState.asStateFlow()
 
     private var progressJob: Job? = null
-    private var playbackStartTimestamp: Long = 0L
+    private var currentSessionHistoryId: String? = null
+    private var currentSessionCompleted: Boolean = false
 
     init {
         // Observe local liked track IDs to keep playback state perfectly synced everywhere
@@ -82,8 +82,7 @@ class PlaybackManager(
         playbackProvider.play(syncTrack)
         localDataStore.recordRecentTrack(syncTrack.id)
 
-        playbackStartTimestamp = System.currentTimeMillis()
-        recordEvent(syncTrack.id, 0L, ListeningEventType.PLAY_STARTED)
+        startNewListeningSession(syncTrack.id)
 
         _playbackState.update {
             it.copy(
@@ -109,8 +108,7 @@ class PlaybackManager(
         playbackProvider.play(selectedTrack)
         localDataStore.recordRecentTrack(selectedTrack.id)
 
-        playbackStartTimestamp = System.currentTimeMillis()
-        recordEvent(selectedTrack.id, 0L, ListeningEventType.PLAY_STARTED)
+        startNewListeningSession(selectedTrack.id)
 
         _playbackState.update {
             it.copy(
@@ -131,8 +129,15 @@ class PlaybackManager(
         playbackProvider.pause()
         stopProgressTracker()
 
-        state.currentTrack?.let { track ->
-            recordEvent(track.id, state.progressMs, ListeningEventType.PLAY_PAUSED)
+        val historyId = currentSessionHistoryId
+        if (historyId != null && !currentSessionCompleted) {
+            scope.launch {
+                try {
+                    listeningHistoryRepository.recordPlaybackProgress(historyId, state.progressMs, state.durationMs)
+                } catch (e: Exception) {
+                    println("PlaybackManager: Error saving progress on pause: ${e.message}")
+                }
+            }
         }
 
         _playbackState.update { it.copy(isPlaying = false) }
@@ -142,10 +147,6 @@ class PlaybackManager(
         val state = _playbackState.value
         if (state.currentTrack == null || state.isPlaying) return
         playbackProvider.resume()
-
-        state.currentTrack?.let { track ->
-            recordEvent(track.id, state.progressMs, ListeningEventType.PLAY_RESUMED)
-        }
 
         _playbackState.update { it.copy(isPlaying = true) }
         startProgressTracker()
@@ -159,16 +160,32 @@ class PlaybackManager(
         }
     }
 
-    fun next() {
+    fun next(isNaturalCompletion: Boolean = false) {
         val state = _playbackState.value
         if (state.queue.isEmpty()) return
 
-        state.currentTrack?.let { track ->
-            val ratio = if (state.durationMs > 0) state.progressMs.toFloat() / state.durationMs else 0f
-            if (ratio < 0.8f) {
-                recordEvent(track.id, state.progressMs, ListeningEventType.SKIPPED)
-            } else {
-                recordEvent(track.id, state.progressMs, ListeningEventType.PLAY_COMPLETED)
+        if (!isNaturalCompletion) {
+            val historyId = currentSessionHistoryId
+            if (historyId != null && !currentSessionCompleted) {
+                val ratio = if (state.durationMs > 0) state.progressMs.toFloat() / state.durationMs else 0f
+                if (ratio >= 0.8f) {
+                    currentSessionCompleted = true
+                    scope.launch {
+                        try {
+                            listeningHistoryRepository.recordPlaybackCompleted(historyId, state.durationMs)
+                        } catch (e: Exception) {
+                            println("PlaybackManager: Error recording completion on next: ${e.message}")
+                        }
+                    }
+                } else {
+                    scope.launch {
+                        try {
+                            listeningHistoryRepository.recordPlaybackProgress(historyId, state.progressMs, state.durationMs)
+                        } catch (e: Exception) {
+                            println("PlaybackManager: Error recording progress on next: ${e.message}")
+                        }
+                    }
+                }
             }
         }
 
@@ -182,8 +199,7 @@ class PlaybackManager(
         playbackProvider.skipNext()
         localDataStore.recordRecentTrack(nextTrack.id)
 
-        playbackStartTimestamp = System.currentTimeMillis()
-        recordEvent(nextTrack.id, 0L, ListeningEventType.PLAY_STARTED)
+        startNewListeningSession(nextTrack.id)
 
         _playbackState.update {
             it.copy(
@@ -206,13 +222,23 @@ class PlaybackManager(
             return
         }
 
+        val historyId = currentSessionHistoryId
+        if (historyId != null && !currentSessionCompleted) {
+            scope.launch {
+                try {
+                    listeningHistoryRepository.recordPlaybackProgress(historyId, state.progressMs, state.durationMs)
+                } catch (e: Exception) {
+                    println("PlaybackManager: Error recording progress on previous: ${e.message}")
+                }
+            }
+        }
+
         val prevIndex = if (state.queueIndex - 1 < 0) state.queue.size - 1 else state.queueIndex - 1
         val prevTrack = state.queue[prevIndex]
         playbackProvider.skipPrevious()
         localDataStore.recordRecentTrack(prevTrack.id)
 
-        playbackStartTimestamp = System.currentTimeMillis()
-        recordEvent(prevTrack.id, 0L, ListeningEventType.PLAY_STARTED)
+        startNewListeningSession(prevTrack.id)
 
         _playbackState.update {
             it.copy(
@@ -244,14 +270,21 @@ class PlaybackManager(
     fun toggleLike(trackId: String) {
         scope.launch {
             try {
-                val isLiked = likedTracksRepository.toggleLike(trackId)
-                recordEvent(
-                    trackId = trackId,
-                    pos = _playbackState.value.progressMs,
-                    type = if (isLiked) ListeningEventType.LIKED else ListeningEventType.UNLIKED
-                )
+                likedTracksRepository.toggleLike(trackId)
             } catch (e: Exception) {
                 println("PlaybackManager: Error toggling like: ${e.message}")
+            }
+        }
+    }
+
+    private fun startNewListeningSession(trackId: String) {
+        currentSessionCompleted = false
+        currentSessionHistoryId = null
+        scope.launch {
+            try {
+                currentSessionHistoryId = listeningHistoryRepository.recordPlaybackStart(trackId)
+            } catch (e: Exception) {
+                println("PlaybackManager: Error starting listening session for track $trackId: ${e.message}")
             }
         }
     }
@@ -266,17 +299,32 @@ class PlaybackManager(
 
                 val newPos = state.progressMs + 1000L
                 if (newPos >= state.durationMs) {
-                    recordEvent(state.currentTrack.id, state.durationMs, ListeningEventType.PLAY_COMPLETED)
+                    val historyId = currentSessionHistoryId
+                    if (historyId != null && !currentSessionCompleted) {
+                        currentSessionCompleted = true
+                        try {
+                            listeningHistoryRepository.recordPlaybackCompleted(historyId, state.durationMs)
+                        } catch (e: Exception) {
+                            println("PlaybackManager: Error recording natural completion: ${e.message}")
+                        }
+                    }
                     if (state.isRepeat) {
                         seekTo(0L)
                     } else {
-                        next()
+                        next(isNaturalCompletion = true)
                     }
                 } else {
                     _playbackState.update { it.copy(progressMs = newPos) }
                     // Record progress every 15 seconds
                     if (newPos % 15000L == 0L) {
-                        listeningHistoryRepository.recordPlaybackProgress(state.currentTrack.id, newPos, state.durationMs)
+                        val historyId = currentSessionHistoryId
+                        if (historyId != null && !currentSessionCompleted) {
+                            try {
+                                listeningHistoryRepository.recordPlaybackProgress(historyId, newPos, state.durationMs)
+                            } catch (e: Exception) {
+                                println("PlaybackManager: Error updating progress: ${e.message}")
+                            }
+                        }
                     }
                 }
             }
@@ -286,25 +334,5 @@ class PlaybackManager(
     private fun stopProgressTracker() {
         progressJob?.cancel()
         progressJob = null
-    }
-
-    private fun recordEvent(trackId: String, pos: Long, type: ListeningEventType) {
-        scope.launch {
-            when (type) {
-                ListeningEventType.PLAY_STARTED -> {
-                    listeningHistoryRepository.recordPlaybackStart(trackId)
-                }
-                ListeningEventType.PLAY_PAUSED, ListeningEventType.PLAY_RESUMED -> {
-                    // Could potentially record progress on pause
-                }
-                ListeningEventType.SKIPPED -> {
-                    // Update final progress if needed
-                }
-                ListeningEventType.PLAY_COMPLETED -> {
-                    listeningHistoryRepository.recordPlaybackCompleted(trackId, _playbackState.value.durationMs)
-                }
-                else -> { /* Handle likes etc if necessary */ }
-            }
-        }
     }
 }

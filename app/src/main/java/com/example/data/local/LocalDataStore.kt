@@ -46,6 +46,34 @@ class LocalDataStore {
         _guestListeningHistory.update { listOf(entry) + it }
     }
 
+    fun updateGuestHistoryProgress(historyId: String, positionMs: Long, durationMs: Long) {
+        _guestListeningHistory.update { list ->
+            list.map { entry ->
+                if (entry.id == historyId) {
+                    entry.copy(positionMs = positionMs, durationMs = durationMs)
+                } else {
+                    entry
+                }
+            }
+        }
+    }
+
+    fun updateGuestHistoryCompleted(historyId: String, durationMs: Long) {
+        _guestListeningHistory.update { list ->
+            list.map { entry ->
+                if (entry.id == historyId) {
+                    entry.copy(completed = true, durationMs = durationMs, positionMs = durationMs)
+                } else {
+                    entry
+                }
+            }
+        }
+    }
+
+    fun getGuestHistory(): List<ListeningHistoryEntry> = _guestListeningHistory.value
+
+    fun getRecentGuestHistory(limit: Int): List<ListeningHistoryEntry> = _guestListeningHistory.value.take(limit)
+
     private val _userProfile = MutableStateFlow(
         User(
             id = "",

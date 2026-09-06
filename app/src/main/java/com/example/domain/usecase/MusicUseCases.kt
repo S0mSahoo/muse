@@ -81,9 +81,3 @@ class GetRecommendationsUseCase(private val recommendationRepository: Recommenda
         return recommendationRepository.getRecommendations(context)
     }
 }
-
-class RecordListeningEventUseCase(private val listeningHistoryRepository: ListeningHistoryRepository) {
-    suspend operator fun invoke(event: ListeningEvent) {
-        listeningHistoryRepository.recordEvent(event)
-    }
-}

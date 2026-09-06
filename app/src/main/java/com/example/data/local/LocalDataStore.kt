@@ -2,6 +2,7 @@ package com.example.data.local
 
 import com.example.domain.model.Playlist
 import com.example.domain.model.GuestSession
+import com.example.domain.model.ListeningHistoryEntry
 import com.example.domain.model.User
 import com.example.domain.model.UserEntitlements
 import com.example.domain.model.UserTier
@@ -29,12 +30,20 @@ class LocalDataStore {
     private val _guestSession = MutableStateFlow<GuestSession?>(null)
     val guestSession: StateFlow<GuestSession?> = _guestSession.asStateFlow()
 
+    private val _guestListeningHistory = MutableStateFlow<List<ListeningHistoryEntry>>(emptyList())
+    val guestListeningHistory: StateFlow<List<ListeningHistoryEntry>> = _guestListeningHistory.asStateFlow()
+
     fun setGuestSession(session: GuestSession?) {
         _guestSession.value = session
     }
 
     fun clearGuestSession() {
         _guestSession.value = null
+        _guestListeningHistory.value = emptyList()
+    }
+
+    fun addGuestHistoryEntry(entry: ListeningHistoryEntry) {
+        _guestListeningHistory.update { listOf(entry) + it }
     }
 
     private val _userProfile = MutableStateFlow(

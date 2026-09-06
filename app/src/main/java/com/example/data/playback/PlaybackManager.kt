@@ -1,7 +1,6 @@
 package com.example.data.playback
 
 import com.example.data.local.LocalDataStore
-import com.example.domain.model.ListeningEvent
 import com.example.domain.model.ListeningEventType
 import com.example.domain.model.PlaybackState
 import com.example.domain.model.Playlist
@@ -275,6 +274,10 @@ class PlaybackManager(
                     }
                 } else {
                     _playbackState.update { it.copy(progressMs = newPos) }
+                    // Record progress every 15 seconds
+                    if (newPos % 15000L == 0L) {
+                        listeningHistoryRepository.recordPlaybackProgress(state.currentTrack.id, newPos, state.durationMs)
+                    }
                 }
             }
         }
@@ -287,18 +290,21 @@ class PlaybackManager(
 
     private fun recordEvent(trackId: String, pos: Long, type: ListeningEventType) {
         scope.launch {
-            val durListened = (System.currentTimeMillis() - playbackStartTimestamp).coerceAtLeast(0L)
-            val duration = _playbackState.value.durationMs.coerceAtLeast(1L)
-            val ratio = (pos.toFloat() / duration).coerceIn(0f, 1f)
-            listeningHistoryRepository.recordEvent(
-                ListeningEvent(
-                    trackId = trackId,
-                    playbackPositionMs = pos,
-                    durationListenedMs = durListened,
-                    completionRatio = ratio,
-                    eventType = type
-                )
-            )
+            when (type) {
+                ListeningEventType.PLAY_STARTED -> {
+                    listeningHistoryRepository.recordPlaybackStart(trackId)
+                }
+                ListeningEventType.PLAY_PAUSED, ListeningEventType.PLAY_RESUMED -> {
+                    // Could potentially record progress on pause
+                }
+                ListeningEventType.SKIPPED -> {
+                    // Update final progress if needed
+                }
+                ListeningEventType.PLAY_COMPLETED -> {
+                    listeningHistoryRepository.recordPlaybackCompleted(trackId, _playbackState.value.durationMs)
+                }
+                else -> { /* Handle likes etc if necessary */ }
+            }
         }
     }
 }

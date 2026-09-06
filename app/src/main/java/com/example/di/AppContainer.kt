@@ -8,7 +8,7 @@ import com.example.data.provider.MockPlaybackProvider
 import com.example.data.recommendation.DefaultCandidateGenerator
 import com.example.data.recommendation.DefaultRecommendationEngine
 import com.example.data.recommendation.DefaultTrackRanker
-import com.example.data.repository.ListeningHistoryRepositoryImpl
+import com.example.data.repository.SupabaseListeningHistoryRepositoryImpl
 import com.example.data.repository.MockEntitlementRepositoryImpl
 import com.example.data.repository.MockMusicRepositoryImpl
 import com.example.data.repository.MockPlaybackRepositoryImpl
@@ -36,7 +36,6 @@ import com.example.domain.usecase.GetRecommendationsUseCase
 import com.example.domain.usecase.PausePlaybackUseCase
 import com.example.domain.usecase.PlayPlaylistUseCase
 import com.example.domain.usecase.PlayTrackUseCase
-import com.example.domain.usecase.RecordListeningEventUseCase
 import com.example.domain.usecase.ResumePlaybackUseCase
 import com.example.domain.usecase.SearchMusicUseCase
 import com.example.domain.usecase.SeekToUseCase
@@ -54,7 +53,9 @@ object AppContainer {
     val musicCatalogProvider: MusicCatalogProvider by lazy { MockMusicCatalogProvider() }
     val playbackProvider: PlaybackProvider by lazy { MockPlaybackProvider() }
 
-    val listeningHistoryRepository: ListeningHistoryRepository by lazy { ListeningHistoryRepositoryImpl() }
+    val listeningHistoryRepository: ListeningHistoryRepository by lazy { 
+        SupabaseListeningHistoryRepositoryImpl(authRepository, localDataStore) 
+    }
     val candidateGenerator by lazy { DefaultCandidateGenerator(musicCatalogProvider) }
     val trackRanker by lazy { DefaultTrackRanker() }
     val recommendationEngine: RecommendationEngine by lazy {
@@ -112,7 +113,6 @@ object AppContainer {
     val getLikedTracksUseCase by lazy { GetLikedTracksUseCase(musicRepository) }
     val searchMusicUseCase by lazy { SearchMusicUseCase(musicRepository) }
     val getRecommendationsUseCase by lazy { GetRecommendationsUseCase(recommendationRepository) }
-    val recordListeningEventUseCase by lazy { RecordListeningEventUseCase(listeningHistoryRepository) }
 
     val getEntitlementsUseCase by lazy { GetEntitlementsUseCase(entitlementRepository) }
     val setSubscriptionTierUseCase by lazy { SetSubscriptionTierUseCase(entitlementRepository) }

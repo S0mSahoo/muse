@@ -8,9 +8,11 @@ import com.example.domain.provider.PlaybackProvider
 import com.example.domain.repository.LikedTracksRepository
 import com.example.domain.repository.ListeningHistoryRepository
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,6 +20,18 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+
+/**
+ * Encapsulates an active playback listening session to prevent race conditions across tracks.
+ */
+private data class PlaybackSession(
+    val generation: Long,
+    val trackId: String,
+    val historyIdDeferred: Deferred<String?>
+) {
+    @Volatile
+    var isCompleted: Boolean = false
+}
 
 /**
  * Centralized Playback Engine and single source of truth for audio playback.
@@ -46,8 +60,8 @@ class PlaybackManager(
     val playbackState: StateFlow<PlaybackState> = _playbackState.asStateFlow()
 
     private var progressJob: Job? = null
-    private var currentSessionHistoryId: String? = null
-    private var currentSessionCompleted: Boolean = false
+    private var sessionGenerationCounter: Long = 0L
+    private var currentSession: PlaybackSession? = null
 
     init {
         // Observe local liked track IDs to keep playback state perfectly synced everywhere
@@ -72,6 +86,15 @@ class PlaybackManager(
     }
 
     fun playTrack(track: Track, queue: List<Track> = listOf(track)) {
+        val state = _playbackState.value
+        if (state.currentTrack != null) {
+            finalizeCurrentSession(
+                markCompleted = false,
+                finalProgressMs = state.progressMs,
+                durationMs = state.durationMs
+            )
+        }
+
         val likedIds = likedTracksRepository.getLikedTrackIds().value
         val syncTrack = track.copy(isLiked = likedIds.contains(track.id))
         val fullQueue = if (queue.contains(track)) queue else listOf(track) + queue
@@ -82,7 +105,7 @@ class PlaybackManager(
         playbackProvider.play(syncTrack)
         localDataStore.recordRecentTrack(syncTrack.id)
 
-        startNewListeningSession(syncTrack.id)
+        val session = createNewSession(syncTrack.id)
 
         _playbackState.update {
             it.copy(
@@ -94,11 +117,21 @@ class PlaybackManager(
                 queueIndex = index
             )
         }
-        startProgressTracker()
+        startProgressTracker(session)
     }
 
     fun playPlaylist(playlist: Playlist, startIndex: Int = 0) {
         if (playlist.tracks.isEmpty()) return
+
+        val state = _playbackState.value
+        if (state.currentTrack != null) {
+            finalizeCurrentSession(
+                markCompleted = false,
+                finalProgressMs = state.progressMs,
+                durationMs = state.durationMs
+            )
+        }
+
         val likedIds = likedTracksRepository.getLikedTrackIds().value
         val syncTracks = playlist.tracks.map { it.copy(isLiked = likedIds.contains(it.id)) }
         val validIndex = startIndex.coerceIn(0, syncTracks.size - 1)
@@ -108,7 +141,7 @@ class PlaybackManager(
         playbackProvider.play(selectedTrack)
         localDataStore.recordRecentTrack(selectedTrack.id)
 
-        startNewListeningSession(selectedTrack.id)
+        val session = createNewSession(selectedTrack.id)
 
         _playbackState.update {
             it.copy(
@@ -120,7 +153,7 @@ class PlaybackManager(
                 queueIndex = validIndex
             )
         }
-        startProgressTracker()
+        startProgressTracker(session)
     }
 
     fun pause() {
@@ -129,11 +162,14 @@ class PlaybackManager(
         playbackProvider.pause()
         stopProgressTracker()
 
-        val historyId = currentSessionHistoryId
-        if (historyId != null && !currentSessionCompleted) {
+        val session = currentSession
+        if (session != null && !session.isCompleted) {
             scope.launch {
                 try {
-                    listeningHistoryRepository.recordPlaybackProgress(historyId, state.progressMs, state.durationMs)
+                    val historyId = session.historyIdDeferred.await()
+                    if (historyId != null && !session.isCompleted && currentSession?.generation == session.generation) {
+                        listeningHistoryRepository.recordPlaybackProgress(historyId, state.progressMs, state.durationMs)
+                    }
                 } catch (e: Exception) {
                     println("PlaybackManager: Error saving progress on pause: ${e.message}")
                 }
@@ -146,10 +182,11 @@ class PlaybackManager(
     fun resume() {
         val state = _playbackState.value
         if (state.currentTrack == null || state.isPlaying) return
+        val session = currentSession ?: return
         playbackProvider.resume()
 
         _playbackState.update { it.copy(isPlaying = true) }
-        startProgressTracker()
+        startProgressTracker(session)
     }
 
     fun togglePlayPause() {
@@ -165,27 +202,15 @@ class PlaybackManager(
         if (state.queue.isEmpty()) return
 
         if (!isNaturalCompletion) {
-            val historyId = currentSessionHistoryId
-            if (historyId != null && !currentSessionCompleted) {
+            val priorSession = currentSession
+            if (priorSession != null && !priorSession.isCompleted) {
                 val ratio = if (state.durationMs > 0) state.progressMs.toFloat() / state.durationMs else 0f
-                if (ratio >= 0.8f) {
-                    currentSessionCompleted = true
-                    scope.launch {
-                        try {
-                            listeningHistoryRepository.recordPlaybackCompleted(historyId, state.durationMs)
-                        } catch (e: Exception) {
-                            println("PlaybackManager: Error recording completion on next: ${e.message}")
-                        }
-                    }
-                } else {
-                    scope.launch {
-                        try {
-                            listeningHistoryRepository.recordPlaybackProgress(historyId, state.progressMs, state.durationMs)
-                        } catch (e: Exception) {
-                            println("PlaybackManager: Error recording progress on next: ${e.message}")
-                        }
-                    }
-                }
+                val isComplete = ratio >= 0.8f
+                finalizeCurrentSession(
+                    markCompleted = isComplete,
+                    finalProgressMs = state.progressMs,
+                    durationMs = state.durationMs
+                )
             }
         }
 
@@ -199,7 +224,7 @@ class PlaybackManager(
         playbackProvider.skipNext()
         localDataStore.recordRecentTrack(nextTrack.id)
 
-        startNewListeningSession(nextTrack.id)
+        val newSession = createNewSession(nextTrack.id)
 
         _playbackState.update {
             it.copy(
@@ -210,7 +235,7 @@ class PlaybackManager(
                 queueIndex = nextIndex
             )
         }
-        startProgressTracker()
+        startProgressTracker(newSession)
     }
 
     fun previous() {
@@ -222,15 +247,13 @@ class PlaybackManager(
             return
         }
 
-        val historyId = currentSessionHistoryId
-        if (historyId != null && !currentSessionCompleted) {
-            scope.launch {
-                try {
-                    listeningHistoryRepository.recordPlaybackProgress(historyId, state.progressMs, state.durationMs)
-                } catch (e: Exception) {
-                    println("PlaybackManager: Error recording progress on previous: ${e.message}")
-                }
-            }
+        val priorSession = currentSession
+        if (priorSession != null && !priorSession.isCompleted) {
+            finalizeCurrentSession(
+                markCompleted = false,
+                finalProgressMs = state.progressMs,
+                durationMs = state.durationMs
+            )
         }
 
         val prevIndex = if (state.queueIndex - 1 < 0) state.queue.size - 1 else state.queueIndex - 1
@@ -238,7 +261,7 @@ class PlaybackManager(
         playbackProvider.skipPrevious()
         localDataStore.recordRecentTrack(prevTrack.id)
 
-        startNewListeningSession(prevTrack.id)
+        val newSession = createNewSession(prevTrack.id)
 
         _playbackState.update {
             it.copy(
@@ -249,7 +272,7 @@ class PlaybackManager(
                 queueIndex = prevIndex
             )
         }
-        startProgressTracker()
+        startProgressTracker(newSession)
     }
 
     fun seekTo(positionMs: Long) {
@@ -277,35 +300,71 @@ class PlaybackManager(
         }
     }
 
-    private fun startNewListeningSession(trackId: String) {
-        currentSessionCompleted = false
-        currentSessionHistoryId = null
+    private fun createNewSession(trackId: String): PlaybackSession {
+        val gen = ++sessionGenerationCounter
+        val deferred = scope.async {
+            try {
+                listeningHistoryRepository.recordPlaybackStart(trackId)
+            } catch (e: Exception) {
+                println("PlaybackManager: Failed to start listening session for track $trackId: ${e.message}")
+                null
+            }
+        }
+        val session = PlaybackSession(
+            generation = gen,
+            trackId = trackId,
+            historyIdDeferred = deferred
+        )
+        currentSession = session
+        return session
+    }
+
+    private fun finalizeCurrentSession(
+        markCompleted: Boolean,
+        finalProgressMs: Long,
+        durationMs: Long
+    ) {
+        val session = currentSession ?: return
+        if (session.isCompleted) return
+
         scope.launch {
             try {
-                currentSessionHistoryId = listeningHistoryRepository.recordPlaybackStart(trackId)
+                val historyId = session.historyIdDeferred.await() ?: return@launch
+                if (session.isCompleted) return@launch
+
+                if (markCompleted) {
+                    session.isCompleted = true
+                    listeningHistoryRepository.recordPlaybackCompleted(historyId, durationMs)
+                } else {
+                    listeningHistoryRepository.recordPlaybackProgress(historyId, finalProgressMs, durationMs)
+                }
             } catch (e: Exception) {
-                println("PlaybackManager: Error starting listening session for track $trackId: ${e.message}")
+                println("PlaybackManager: Error finalizing listening session for ${session.trackId}: ${e.message}")
             }
         }
     }
 
-    private fun startProgressTracker() {
+    private fun startProgressTracker(session: PlaybackSession) {
         progressJob?.cancel()
         progressJob = scope.launch {
-            while (isActive && _playbackState.value.isPlaying) {
+            while (isActive && _playbackState.value.isPlaying && currentSession?.generation == session.generation) {
                 delay(1000L)
                 val state = _playbackState.value
-                if (!state.isPlaying || state.currentTrack == null) break
+                if (!state.isPlaying || state.currentTrack == null || currentSession?.generation != session.generation) break
 
                 val newPos = state.progressMs + 1000L
                 if (newPos >= state.durationMs) {
-                    val historyId = currentSessionHistoryId
-                    if (historyId != null && !currentSessionCompleted) {
-                        currentSessionCompleted = true
-                        try {
-                            listeningHistoryRepository.recordPlaybackCompleted(historyId, state.durationMs)
-                        } catch (e: Exception) {
-                            println("PlaybackManager: Error recording natural completion: ${e.message}")
+                    if (!session.isCompleted) {
+                        session.isCompleted = true
+                        scope.launch {
+                            try {
+                                val historyId = session.historyIdDeferred.await()
+                                if (historyId != null) {
+                                    listeningHistoryRepository.recordPlaybackCompleted(historyId, state.durationMs)
+                                }
+                            } catch (e: Exception) {
+                                println("PlaybackManager: Error recording natural completion for ${session.trackId}: ${e.message}")
+                            }
                         }
                     }
                     if (state.isRepeat) {
@@ -317,12 +376,16 @@ class PlaybackManager(
                     _playbackState.update { it.copy(progressMs = newPos) }
                     // Record progress every 15 seconds
                     if (newPos % 15000L == 0L) {
-                        val historyId = currentSessionHistoryId
-                        if (historyId != null && !currentSessionCompleted) {
-                            try {
-                                listeningHistoryRepository.recordPlaybackProgress(historyId, newPos, state.durationMs)
-                            } catch (e: Exception) {
-                                println("PlaybackManager: Error updating progress: ${e.message}")
+                        if (!session.isCompleted) {
+                            scope.launch {
+                                try {
+                                    val historyId = session.historyIdDeferred.await()
+                                    if (historyId != null && !session.isCompleted && currentSession?.generation == session.generation) {
+                                        listeningHistoryRepository.recordPlaybackProgress(historyId, newPos, state.durationMs)
+                                    }
+                                } catch (e: Exception) {
+                                    println("PlaybackManager: Error updating progress for ${session.trackId}: ${e.message}")
+                                }
                             }
                         }
                     }

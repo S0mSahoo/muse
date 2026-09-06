@@ -1,4 +1,4 @@
--- listening_history table definition and RLS policies
+-- Idempotent listening_history table definition and RLS policies
 CREATE TABLE IF NOT EXISTS listening_history (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL REFERENCES auth.users(id),
@@ -10,6 +10,12 @@ CREATE TABLE IF NOT EXISTS listening_history (
 );
 
 ALTER TABLE listening_history ENABLE ROW LEVEL SECURITY;
+
+-- Drop existing policies if they already exist to allow re-running safely
+DROP POLICY IF EXISTS "Users can insert their own history" ON listening_history;
+DROP POLICY IF EXISTS "Users can select their own history" ON listening_history;
+DROP POLICY IF EXISTS "Users can update their own history" ON listening_history;
+DROP POLICY IF EXISTS "Users can delete their own history" ON listening_history;
 
 -- Allow users to insert their own history rows
 CREATE POLICY "Users can insert their own history" ON listening_history
